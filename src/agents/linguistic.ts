@@ -11,34 +11,13 @@ import {
 } from '../types';
 import { BaseLLMProvider } from '../llm';
 import { logger } from '../utils/logger';
-import { TigerMCPClient } from '../mcp/tiger-client';
 
 export class LinguisticAgent implements Agent {
   name = 'LinguisticAgent';
   private llm: BaseLLMProvider;
-  private tigerMCP: TigerMCPClient | null = null;
 
-  constructor(llm: BaseLLMProvider, enableMCP = true) {
+  constructor(llm: BaseLLMProvider) {
     this.llm = llm;
-
-    // Initialize Tiger MCP client for PostgreSQL expertise (optional feature)
-    if (enableMCP) {
-      this.tigerMCP = new TigerMCPClient();
-      this.initializeMCP();
-    }
-  }
-
-  /**
-   * Initialize Tiger MCP connection (async, non-blocking)
-   */
-  private async initializeMCP(): Promise<void> {
-    try {
-      await this.tigerMCP?.connect();
-      logger.info('Tiger MCP client connected - PostgreSQL expertise enabled');
-    } catch (error) {
-      logger.warn({ error }, 'Failed to connect to Tiger MCP - continuing without MCP');
-      this.tigerMCP = null;
-    }
   }
 
   /**
@@ -64,11 +43,8 @@ export class LinguisticAgent implements Agent {
       // Extract conversation context if available
       const conversationContext = query.context?.conversationContext;
 
-      // Enrich with Tiger MCP expertise if available and query is complex
-      const mcpContext = await this.enrichWithMCPExpertise(query.text);
-
-      // Generate SQL using LLM (with optional MCP expertise)
-      const result = await this.generateSQL(query.text, schemaText, examples, conversationContext, mcpContext);
+      // Generate SQL using LLM
+      const result = await this.generateSQL(query.text, schemaText, examples, conversationContext);
 
       logger.debug({
         confidence: result.confidence,
@@ -98,54 +74,13 @@ export class LinguisticAgent implements Agent {
   }
 
   /**
-   * Enrich query with Tiger MCP PostgreSQL expertise
-   */
-  private async enrichWithMCPExpertise(query: string): Promise<string | undefined> {
-    if (!this.tigerMCP || !this.tigerMCP.isActive()) {
-      return undefined;
-    }
-
-    // Keywords that benefit from PostgreSQL documentation
-    const expertiseKeywords = [
-      'optimize', 'performance', 'index', 'migration', 'trigger',
-      'function', 'procedure', 'view', 'cte', 'window', 'partition',
-      'join', 'aggregate', 'subquery', 'transaction', 'lock'
-    ];
-
-    const queryLower = query.toLowerCase();
-    const needsExpertise = expertiseKeywords.some(keyword => queryLower.includes(keyword));
-
-    if (!needsExpertise) {
-      return undefined;
-    }
-
-    try {
-      logger.debug({ query }, 'Enriching query with Tiger MCP expertise');
-
-      // Search PostgreSQL documentation for relevant information
-      const docs = await this.tigerMCP.searchPostgresDocs(query);
-
-      if (docs) {
-        logger.debug('Tiger MCP expertise added to query context');
-        return `# PostgreSQL Expertise (from Tiger MCP)\n${docs}`;
-      }
-
-      return undefined;
-    } catch (error) {
-      logger.warn({ error }, 'Failed to enrich with Tiger MCP - continuing without');
-      return undefined;
-    }
-  }
-
-  /**
    * Generate SQL using the LLM provider
    */
   private async generateSQL(
     query: string,
     schema: string,
     examples: string,
-    conversationContext?: string,
-    mcpExpertise?: string
+    conversationContext?: string
   ): Promise<{
     sql: string;
     confidence: number;
@@ -174,8 +109,6 @@ ${schema}
 ${examples ? `# SUCCESSFUL EXAMPLES\n${examples}\n` : ''}
 
 ${conversationContext ? `# CONVERSATION HISTORY\n${conversationContext}\n\n` : ''}
-
-${mcpExpertise ? `${mcpExpertise}\n\n` : ''}
 
 # CORE CAPABILITY: Conversation vs SQL Detection
 

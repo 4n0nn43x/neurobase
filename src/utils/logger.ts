@@ -4,10 +4,8 @@
 
 import pino from 'pino';
 
-const logLevel = process.env.NEUROBASE_LOG_LEVEL || 'info';
-
-export const logger = pino({
-  level: logLevel,
+const baseLogger = pino({
+  level: process.env.NEUROBASE_LOG_LEVEL || 'info',
   transport:
     process.env.NODE_ENV !== 'production'
       ? {
@@ -20,5 +18,21 @@ export const logger = pino({
         }
       : undefined,
 });
+
+// Wrapper that checks NEUROBASE_QUIET mode
+export const logger = {
+  debug: (obj: any, msg?: string) => baseLogger.debug(obj, msg),
+  info: (obj: any, msg?: string) => {
+    if (process.env.NEUROBASE_QUIET !== 'true') {
+      baseLogger.info(obj, msg);
+    }
+  },
+  warn: (obj: any, msg?: string) => {
+    if (process.env.NEUROBASE_QUIET !== 'true') {
+      baseLogger.warn(obj, msg);
+    }
+  },
+  error: (obj: any, msg?: string) => baseLogger.error(obj, msg),
+};
 
 export default logger;

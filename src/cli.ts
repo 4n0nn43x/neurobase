@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { NeuroBase } from './core/neurobase';
 import { config } from './config';
+import { DatabaseForkManager } from './database/fork';
 
 const program = new Command();
 
@@ -154,6 +155,9 @@ class HistoryPrompt {
  * Interactive mode
  */
 async function runInteractiveMode(): Promise<void> {
+  // Set quiet mode for interactive session (suppress INFO/WARN logs)
+  process.env.NEUROBASE_QUIET = 'true';
+
   console.log(chalk.cyan.bold('\n🧠 NeuroBase - Intelligent Database Interface\n'));
 
   const spinner = ora('Initializing NeuroBase...').start();
@@ -166,7 +170,7 @@ async function runInteractiveMode(): Promise<void> {
 
     // Show welcome message
     console.log(chalk.gray('\nType your questions in natural language.'));
-    console.log(chalk.gray('Commands: .exit, .help, .schema, .stats, .clear\n'));
+    console.log(chalk.gray('Commands: .exit, .help, .schema, .stats, .clear, .fork, .forks\n'));
 
     const historyPrompt = new HistoryPrompt();
     let continueSession = true;
@@ -213,6 +217,26 @@ async function runInteractiveMode(): Promise<void> {
           // Ignore errors
         }
         console.log(chalk.gray('History cleared\n'));
+        continue;
+      }
+
+      if (trimmedQuery === '.fork') {
+        await createFork();
+        continue;
+      }
+
+      if (trimmedQuery === '.forks') {
+        await listForks();
+        continue;
+      }
+
+      if (trimmedQuery.startsWith('.fork-delete ')) {
+        const forkId = trimmedQuery.split(' ')[1];
+        if (forkId) {
+          await deleteFork(forkId);
+        } else {
+          console.log(chalk.red('\nUsage: .fork-delete <fork-id>\n'));
+        }
         continue;
       }
 
@@ -669,11 +693,14 @@ function formatSQL(sql: string): string {
  */
 function showHelp(): void {
   console.log(chalk.cyan('\n📖 NeuroBase Commands:\n'));
-  console.log('  .exit     - Exit NeuroBase');
-  console.log('  .help     - Show this help message');
-  console.log('  .schema   - Show database schema');
-  console.log('  .stats    - Show database statistics');
-  console.log('  .clear    - Clear screen\n');
+  console.log('  .exit               - Exit NeuroBase');
+  console.log('  .help               - Show this help message');
+  console.log('  .schema             - Show database schema');
+  console.log('  .stats              - Show database statistics');
+  console.log('  .clear              - Clear screen');
+  console.log('  .fork               - Create a database fork for testing');
+  console.log('  .forks              - List all database services/forks');
+  console.log('  .fork-delete <id>   - Delete a database fork\n');
 
   console.log(chalk.cyan('💡 Example Queries:\n'));
   console.log('  "Show me all users"');
@@ -800,5 +827,180 @@ async function showStats(): Promise<void> {
   } catch (error) {
     console.error(chalk.red('\nError:'), error instanceof Error ? error.message : error);
     process.exit(1);
+  }
+}
+
+/**
+ * Create a database fork
+ */
+async function createFork(): Promise<void> {
+  try {
+    const forkManager = new DatabaseForkManager();
+
+    console.log(chalk.blue('\n🍴 Create Database Fork\n'));
+    console.log(chalk.gray('Create a copy of your database for safe testing and experimentation.\n'));
+
+    // Ask for fork strategy
+    const { strategy } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'strategy',
+        message: 'Fork strategy:',
+        choices: [
+          {
+            name: 'Current state (--now) - Fork the database as it is right now',
+            value: 'now',
+          },
+          {
+            name: 'Last snapshot (--last-snapshot) - Fork from the last backup (faster)',
+            value: 'last-snapshot',
+          },
+          {
+            name: 'Specific timestamp (--to-timestamp) - Fork from a specific point in time',
+            value: 'to-timestamp',
+          },
+        ],
+      },
+    ]);
+
+    let timestamp: string | undefined;
+
+    if (strategy === 'to-timestamp') {
+      const { timestampInput } = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'timestampInput',
+          message: 'Enter timestamp (RFC3339 format, e.g., 2025-10-26T10:30:00Z):',
+          validate: (input: string) => {
+            try {
+              new Date(input);
+              return true;
+            } catch {
+              return 'Invalid timestamp format. Use RFC3339 format (e.g., 2025-10-26T10:30:00Z)';
+            }
+          },
+        },
+      ]);
+      timestamp = timestampInput;
+    }
+
+    // Ask for optional name
+    const { name } = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'name',
+        message: 'Fork name (leave empty for auto-generated):',
+        default: '',
+      },
+    ]);
+
+    const spinner = ora('Creating database fork...').start();
+
+    const fork = await forkManager.createFork({
+      strategy: strategy as 'now' | 'last-snapshot' | 'to-timestamp',
+      timestamp,
+      name: name || undefined,
+      waitForCompletion: true,
+    });
+
+    spinner.succeed('Database fork created successfully');
+
+    console.log(chalk.green('\n✅ Fork created:\n'));
+    console.log(chalk.gray(`  ID:         ${fork.id}`));
+    console.log(chalk.gray(`  Name:       ${fork.name}`));
+    console.log(chalk.gray(`  Status:     ${fork.status}`));
+    console.log(chalk.gray(`  Created:    ${fork.createdAt}\n`));
+    console.log(chalk.yellow('💡 Use .forks to see all your database forks'));
+    console.log(chalk.yellow('💡 Use .fork-delete <id> to delete a fork\n'));
+  } catch (error) {
+    console.error(chalk.red('\n❌ Error creating fork:'), error instanceof Error ? error.message : error);
+    console.log();
+  }
+}
+
+/**
+ * List all database forks
+ */
+async function listForks(): Promise<void> {
+  try {
+    const forkManager = new DatabaseForkManager();
+    const spinner = ora('Loading database services...').start();
+
+    const services = await forkManager.listServices();
+
+    spinner.stop();
+
+    if (services.length === 0) {
+      console.log(chalk.yellow('\nNo database services found.\n'));
+      return;
+    }
+
+    console.log(chalk.blue('\n🗄️  Database Services:\n'));
+
+    const table = new Table({
+      head: [
+        chalk.cyan('ID'),
+        chalk.cyan('Name'),
+        chalk.cyan('Status'),
+        chalk.cyan('Type'),
+        chalk.cyan('Created'),
+      ],
+      style: {
+        head: [],
+        border: [],
+      },
+    });
+
+    for (const service of services) {
+      const isFork = !!service.parentServiceId;
+      table.push([
+        service.id,
+        service.name,
+        service.status === 'running' ? chalk.green('●') + ' ' + service.status : service.status,
+        isFork ? chalk.yellow('Fork') : chalk.blue('Primary'),
+        new Date(service.createdAt).toLocaleString(),
+      ]);
+    }
+
+    console.log(table.toString());
+    console.log();
+    console.log(chalk.gray('💡 Use .fork-delete <id> to delete a fork\n'));
+  } catch (error) {
+    console.error(chalk.red('\n❌ Error listing forks:'), error instanceof Error ? error.message : error);
+    console.log();
+  }
+}
+
+/**
+ * Delete a database fork
+ */
+async function deleteFork(forkId: string): Promise<void> {
+  try {
+    const forkManager = new DatabaseForkManager();
+
+    // Confirm deletion
+    const { confirm } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirm',
+        message: `Are you sure you want to delete fork ${forkId}? This cannot be undone.`,
+        default: false,
+      },
+    ]);
+
+    if (!confirm) {
+      console.log(chalk.yellow('\nDeletion cancelled.\n'));
+      return;
+    }
+
+    const spinner = ora('Deleting database fork...').start();
+
+    await forkManager.deleteFork(forkId);
+
+    spinner.succeed('Database fork deleted successfully');
+    console.log();
+  } catch (error) {
+    console.error(chalk.red('\n❌ Error deleting fork:'), error instanceof Error ? error.message : error);
+    console.log();
   }
 }
