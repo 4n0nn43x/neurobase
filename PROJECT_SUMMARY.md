@@ -323,9 +323,9 @@ OPENAI_API_KEY=sk-your-key
 
 ## 📞 Support
 
-- **GitHub**: [Issues](https://github.com/yourusername/neurobase/issues)
+- **GitHub**: [Issues](https://github.com/4n0nn43x/neurobase/issues)
 - **Email**: support@neurobase.dev
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/neurobase/discussions)
+- **Discussions**: [GitHub Discussions](https://github.com/4n0nn43x/neurobase/discussions)
 
 ---
 

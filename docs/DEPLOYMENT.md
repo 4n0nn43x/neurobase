@@ -93,7 +93,7 @@ tiger db connect --service-id <your-service-id>
 ### 1. Clone Repository
 
 ```bash
-git clone https://github.com/yourusername/neurobase.git
+git clone https://github.com/4n0nn43x/neurobase.git
 cd neurobase
 ```
 
@@ -277,7 +277,7 @@ curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
 # Clone repository
-git clone https://github.com/yourusername/neurobase.git
+git clone https://github.com/4n0nn43x/neurobase.git
 cd neurobase
 
 # Install dependencies
@@ -605,7 +605,7 @@ EOF
 ## Support
 
 For deployment issues:
-- Check [GitHub Issues](https://github.com/yourusername/neurobase/issues)
+- Check [GitHub Issues](https://github.com/4n0nn43x/neurobase/issues)
 - Join [Discord Community](https://discord.gg/neurobase)
 - Email: support@neurobase.dev
 

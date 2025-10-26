@@ -812,4 +812,4 @@ import {
 For more information:
 - [Architecture Documentation](ARCHITECTURE.md)
 - [Deployment Guide](DEPLOYMENT.md)
-- [GitHub Repository](https://github.com/yourusername/neurobase)
+- [GitHub Repository](https://github.com/4n0nn43x/neurobase)

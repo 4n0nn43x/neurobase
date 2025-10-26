@@ -110,7 +110,7 @@ npm run dev
 
 ### Reporting Bugs
 
-1. Check if the bug is already reported in [Issues](https://github.com/yourusername/neurobase/issues)
+1. Check if the bug is already reported in [Issues](https://github.com/4n0nn43x/neurobase/issues)
 2. If not, create a new issue with:
    - Clear, descriptive title
    - Steps to reproduce
@@ -150,7 +150,7 @@ Paste relevant logs here
 
 ### Suggesting Features
 
-1. Check [existing feature requests](https://github.com/yourusername/neurobase/issues?q=label%3Aenhancement)
+1. Check [existing feature requests](https://github.com/4n0nn43x/neurobase/issues?q=label%3Aenhancement)
 2. Create a new issue with:
    - Clear use case
    - Proposed solution
@@ -565,7 +565,7 @@ npm run dev
 
 ## Questions?
 
-- Open a [GitHub Discussion](https://github.com/yourusername/neurobase/discussions)
+- Open a [GitHub Discussion](https://github.com/4n0nn43x/neurobase/discussions)
 - Join our [Discord](https://discord.gg/neurobase)
 - Email: contribute@neurobase.dev
 

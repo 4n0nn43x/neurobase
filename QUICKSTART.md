@@ -72,7 +72,7 @@ ollama serve
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/neurobase.git
+git clone https://github.com/4n0nn43x/neurobase.git
 cd neurobase
 
 # Install dependencies
@@ -379,8 +379,8 @@ Ideas for projects:
 
 ## Get Help
 
-- [GitHub Issues](https://github.com/yourusername/neurobase/issues)
-- [Discussions](https://github.com/yourusername/neurobase/discussions)
+- [GitHub Issues](https://github.com/4n0nn43x/neurobase/issues)
+- [Discussions](https://github.com/4n0nn43x/neurobase/discussions)
 - [Discord](https://discord.gg/neurobase)
 - Email: support@neurobase.dev
 

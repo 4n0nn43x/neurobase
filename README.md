@@ -119,7 +119,7 @@ tiger auth login
 ### 2. Clone and Install NeuroBase
 
 ```bash
-git clone https://github.com/yourusername/neurobase.git
+git clone https://github.com/4n0nn43x/neurobase.git
 cd neurobase
 npm install
 # or for Python: pip install -r requirements.txt
@@ -455,8 +455,8 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## 📞 Support
 
 - **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/neurobase/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/neurobase/discussions)
+- **Issues**: [GitHub Issues](https://github.com/4n0nn43x/neurobase/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/4n0nn43x/neurobase/discussions)
 - **Email**: support@neurobase.dev
 
 ---

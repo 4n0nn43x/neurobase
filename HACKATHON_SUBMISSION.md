@@ -270,7 +270,7 @@ neurobase/
 
 ```bash
 # Clone and install
-git clone https://github.com/yourusername/neurobase.git
+git clone https://github.com/4n0nn43x/neurobase.git
 cd neurobase
 npm install
 
@@ -416,8 +416,8 @@ NeuroBase demonstrates that **Postgres can be the brain of an AI system**, not j
 
 - **Developer**: [Your Name]
 - **Email**: your.email@example.com
-- **GitHub**: [@yourusername](https://github.com/yourusername)
-- **Project**: [github.com/yourusername/neurobase](https://github.com/yourusername/neurobase)
+- **GitHub**: [@4n0nn43x](https://github.com/4n0nn43x)
+- **Project**: [github.com/4n0nn43x/neurobase](https://github.com/4n0nn43x/neurobase)
 
 ---
 
@@ -439,8 +439,8 @@ MIT License - See [LICENSE](LICENSE)
 
 ## 📞 Contact
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/neurobase/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/neurobase/discussions)
+- **Issues**: [GitHub Issues](https://github.com/4n0nn43x/neurobase/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/4n0nn43x/neurobase/discussions)
 - **Email**: support@neurobase.dev
 - **Twitter**: [@neurobase](https://twitter.com/neurobase)
 

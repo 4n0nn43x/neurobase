@@ -164,7 +164,7 @@ tiger db connection-string --service-id <your-service-id>
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/neurobase.git
+git clone https://github.com/4n0nn43x/neurobase.git
 
 # Navigate to directory
 cd neurobase
@@ -544,8 +544,8 @@ Now:
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/neurobase/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/neurobase/discussions)
+- **Issues**: [GitHub Issues](https://github.com/4n0nn43x/neurobase/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/4n0nn43x/neurobase/discussions)
 - **Email**: support@neurobase.dev
 
 ---
