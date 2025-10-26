@@ -65,9 +65,10 @@ export class OpenAIProvider extends BaseLLMProvider {
   async generateSQL(
     query: string,
     schema: string,
-    examples?: string
+    examples?: string,
+    conversationContext?: string
   ): Promise<{ sql: string; explanation: string; confidence: number }> {
-    const messages = this.createSQLPrompt(query, schema, examples);
+    const messages = this.createSQLPrompt(query, schema, examples, conversationContext);
     const response = await this.generateCompletion(messages, {
       temperature: 0.1,
     });

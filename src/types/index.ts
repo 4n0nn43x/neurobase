@@ -72,6 +72,7 @@ export interface QueryContext {
   previousQueries: string[];
   schemaHints?: string[];
   userPreferences?: Record<string, any>;
+  conversationContext?: string;
 }
 
 export interface SQLQuery {

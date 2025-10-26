@@ -40,8 +40,11 @@ export class LinguisticAgent implements Agent {
         learningHistory || []
       );
 
+      // Extract conversation context if available
+      const conversationContext = query.context?.conversationContext;
+
       // Generate SQL using LLM
-      const result = await this.generateSQL(query.text, schemaText, examples);
+      const result = await this.generateSQL(query.text, schemaText, examples, conversationContext);
 
       logger.debug({
         confidence: result.confidence,
@@ -71,7 +74,8 @@ export class LinguisticAgent implements Agent {
   private async generateSQL(
     query: string,
     schema: string,
-    examples: string
+    examples: string,
+    conversationContext?: string
   ): Promise<{
     sql: string;
     confidence: number;
@@ -80,7 +84,7 @@ export class LinguisticAgent implements Agent {
   }> {
     // Check if LLM provider has generateSQL method
     if ('generateSQL' in this.llm && typeof this.llm.generateSQL === 'function') {
-      return await (this.llm as any).generateSQL(query, schema, examples);
+      return await (this.llm as any).generateSQL(query, schema, examples, conversationContext);
     }
 
     // Fallback to generic completion
@@ -92,6 +96,20 @@ export class LinguisticAgent implements Agent {
 ${schema}
 
 ${examples ? `Examples:\n${examples}\n` : ''}
+
+${conversationContext ? `Recent Conversation:\n${conversationContext}\n` : ''}
+
+IMPORTANT INSTRUCTIONS:
+- When the user mentions a column name directly (like "parent_id", "price", "stock"), they want to see the VALUES of that column
+- "quels sont les parent_id?" or "c'est quoi les parent_id?" means: SELECT DISTINCT parent_id FROM table
+- "quel sont les parents?" means: SELECT * FROM table WHERE parent_id IS NULL (parent categories)
+- Pay close attention to exact column names vs conceptual questions
+- Always return valid PostgreSQL syntax
+
+CONVERSATIONAL CONTEXT:
+- If the user's query is vague (like "je veux les valeurs", "montre moi plus"), look at the recent conversation
+- The user is likely referring to columns or tables from their previous question
+- Use the previous SQL query as a hint for what data they're interested in
 
 Return JSON with: { "sql": "SELECT ...", "explanation": "...", "confidence": 0.9 }`,
       },

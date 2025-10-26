@@ -12,6 +12,10 @@ import Table from 'cli-table3';
 import { NeuroBase } from './core/neurobase';
 import { config } from './config';
 
+// Register command prompt with history support
+const CommandPrompt = require('inquirer-command-prompt');
+inquirer.registerPrompt('command', CommandPrompt);
+
 const program = new Command();
 
 program
@@ -53,6 +57,9 @@ program
 
 program.parse();
 
+// Conversation context to remember recent queries
+const conversationHistory: Array<{ query: string; sql?: string; timestamp: Date }> = [];
+
 /**
  * Interactive mode
  */
@@ -76,10 +83,19 @@ async function runInteractiveMode(): Promise<void> {
     while (continueSession) {
       const { query } = await inquirer.prompt([
         {
-          type: 'input',
+          type: 'command',
           name: 'query',
           message: chalk.green('NeuroBase>'),
           prefix: '',
+          // Enable command history with arrow keys
+          history: {
+            save: true,
+            folder: './.neurobase',
+            limit: 100,
+            blacklist: ['.exit', '.clear']
+          },
+          // Autocomplete for special commands
+          autoCompletion: ['.exit', '.help', '.schema', '.stats', '.clear']
         },
       ]);
 
@@ -112,11 +128,13 @@ async function runInteractiveMode(): Promise<void> {
 
       if (trimmedQuery === '.clear') {
         console.clear();
+        // Clear conversation context
+        conversationHistory.length = 0;
         continue;
       }
 
-      // Execute query
-      await executeQuery(nb, trimmedQuery);
+      // Execute query with conversation context
+      await executeQuery(nb, trimmedQuery, conversationHistory);
     }
   } catch (error) {
     spinner.fail('Failed to initialize NeuroBase');
@@ -128,13 +146,28 @@ async function runInteractiveMode(): Promise<void> {
 /**
  * Execute a query and display results
  */
-async function executeQuery(nb: NeuroBase, query: string): Promise<void> {
+async function executeQuery(
+  nb: NeuroBase,
+  query: string,
+  conversationHistory: Array<{ query: string; sql?: string; timestamp: Date }>
+): Promise<void> {
   const spinner = ora('Analyzing query...').start();
 
   try {
+    // Build conversation context for the LLM
+    const recentContext = conversationHistory.slice(-3).map(entry =>
+      `User: "${entry.query}"\nSQL: ${entry.sql || 'N/A'}`
+    ).join('\n\n');
+
     // First, try to generate the query to check for missing data
     const linguisticResult = await (nb as any).linguisticAgent.process({
-      query: { text: query },
+      query: {
+        text: query,
+        context: {
+          previousQueries: conversationHistory.map(e => e.query),
+          conversationContext: recentContext
+        }
+      },
       schema: await (nb as any).schema.getSchema(),
       learningHistory: [],
     });
@@ -189,6 +222,17 @@ async function executeQuery(nb: NeuroBase, query: string): Promise<void> {
         rowCount: dbResult.rowCount,
         learned: false,
       });
+
+      // Add to conversation history
+      conversationHistory.push({
+        query,
+        sql: updatedQuery,
+        timestamp: new Date()
+      });
+      // Keep only last 10 conversations
+      if (conversationHistory.length > 10) {
+        conversationHistory.shift();
+      }
       return;
     }
 
@@ -202,6 +246,17 @@ async function executeQuery(nb: NeuroBase, query: string): Promise<void> {
     }
 
     displayQueryResults(result);
+
+    // Add to conversation history
+    conversationHistory.push({
+      query,
+      sql: result.sql,
+      timestamp: new Date()
+    });
+    // Keep only last 10 conversations
+    if (conversationHistory.length > 10) {
+      conversationHistory.shift();
+    }
   } catch (error) {
     spinner.fail('Query failed');
     console.error(

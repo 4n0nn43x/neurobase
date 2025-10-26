@@ -36,7 +36,8 @@ export abstract class BaseLLMProvider {
   protected createSQLPrompt(
     query: string,
     schema: string,
-    examples?: string
+    examples?: string,
+    conversationContext?: string
   ): LLMMessage[] {
     const systemPrompt = `You are an expert PostgreSQL query generator. Your task is to convert natural language queries into accurate, efficient SQL queries.
 
@@ -44,6 +45,8 @@ Database Schema:
 ${schema}
 
 ${examples ? `Examples:\n${examples}\n` : ''}
+
+${conversationContext ? `Recent Conversation:\n${conversationContext}\n` : ''}
 
 Rules:
 1. Generate ONLY valid PostgreSQL syntax
@@ -56,6 +59,21 @@ Rules:
 8. Handle NULL values appropriately
 9. Use EXPLAIN when analyzing complex queries
 10. Follow PostgreSQL best practices
+
+IMPORTANT - Understanding Column References:
+- When user mentions a column name directly (like "parent_id", "price", "stock_quantity"), they want to see the VALUES in that column
+- "quels sont les parent_id?" or "c'est quoi les parent_id?" means: SELECT DISTINCT parent_id FROM categories
+- "quel sont les parents?" means: SELECT * FROM categories WHERE parent_id IS NULL (conceptual parent categories)
+- Pay close attention to whether the user is asking about a specific column name vs a conceptual question
+- If in doubt, prefer literal interpretation of column names mentioned
+
+CONVERSATIONAL CONTEXT:
+- If the user's query is vague (like "je veux les valeurs", "montre moi plus", "et les détails?"), look at the recent conversation context
+- The user is likely referring to columns, tables, or concepts from their previous question
+- Use the previous SQL query as a hint for what data they're interested in
+- Example: After "c'est quoi les parent_id?" (shows distinct parent_id values),
+  if user asks "je veux les valeurs", they might want all parent_id values with more details:
+  SELECT parent_id, COUNT(*) as count FROM categories WHERE parent_id IS NOT NULL GROUP BY parent_id
 
 Output format:
 Return ONLY the SQL query as a valid JSON object with this structure:

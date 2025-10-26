@@ -90,3 +90,6 @@ temp/
 *.dump
 !sql/init.sql
 !sql/seed.sql
+
+# CLI history
+.neurobase/
