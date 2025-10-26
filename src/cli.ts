@@ -132,6 +132,66 @@ async function executeQuery(nb: NeuroBase, query: string): Promise<void> {
   const spinner = ora('Analyzing query...').start();
 
   try {
+    // First, try to generate the query to check for missing data
+    const linguisticResult = await (nb as any).linguisticAgent.process({
+      query: { text: query },
+      schema: await (nb as any).schema.getSchema(),
+      learningHistory: [],
+    });
+
+    // Check if there are missing required columns
+    if (linguisticResult.missingData) {
+      spinner.stop();
+      console.log(chalk.yellow(`\n⚠️  Missing required information for table '${linguisticResult.missingData.table}'`));
+      console.log(chalk.gray(linguisticResult.missingData.reason + '\n'));
+
+      // Collect missing data from user
+      const collectedData = await collectMissingData(linguisticResult.missingData);
+
+      // Rebuild the query with the collected data
+      const updatedQuery = await buildQueryWithData(
+        linguisticResult.sql,
+        linguisticResult.missingData.table,
+        collectedData
+      );
+
+      console.log(chalk.blue('\n📝 Updated SQL:'));
+      console.log(chalk.gray(formatSQL(updatedQuery)));
+
+      // Ask for confirmation
+      const { confirm } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'confirm',
+          message: 'Execute this query?',
+          default: true,
+        },
+      ]);
+
+      if (!confirm) {
+        console.log(chalk.yellow('\nQuery cancelled.\n'));
+        return;
+      }
+
+      spinner.start('Executing query...');
+      // Execute the updated SQL directly via the database connection
+      const db = (nb as any).db;
+      const startTime = Date.now();
+      const dbResult = await db.query(updatedQuery);
+      const executionTime = Date.now() - startTime;
+
+      spinner.stop();
+
+      displayQueryResults({
+        data: dbResult.rows,
+        sql: updatedQuery,
+        executionTime,
+        rowCount: dbResult.rowCount,
+        learned: false,
+      });
+      return;
+    }
+
     const result = await nb.query(query);
 
     spinner.stop();
@@ -141,34 +201,7 @@ async function executeQuery(nb: NeuroBase, query: string): Promise<void> {
       console.log(chalk.gray(`\n💡 ${result.explanation}`));
     }
 
-    // Show SQL
-    console.log(chalk.blue('\n📝 Generated SQL:'));
-    console.log(chalk.gray(formatSQL(result.sql)));
-
-    // Show execution time
-    console.log(
-      chalk.gray(`\n⚡ Execution time: ${result.executionTime}ms`)
-    );
-
-    // Show results
-    if (result.data.length === 0) {
-      console.log(chalk.yellow('\n(No rows returned)\n'));
-    } else {
-      console.log(chalk.green(`\n📊 Results (${result.rowCount} rows):\n`));
-      displayTable(result.data);
-    }
-
-    // Show suggestions
-    if (result.suggestions && result.suggestions.length > 0) {
-      console.log(chalk.yellow('\n💡 Suggestions:'));
-      result.suggestions.forEach((s) => console.log(chalk.gray(`  - ${s}`)));
-      console.log();
-    }
-
-    // Show learning indicator
-    if (result.learned) {
-      console.log(chalk.green('✓ Learned from this interaction\n'));
-    }
+    displayQueryResults(result);
   } catch (error) {
     spinner.fail('Query failed');
     console.error(
@@ -177,6 +210,127 @@ async function executeQuery(nb: NeuroBase, query: string): Promise<void> {
     );
     console.log();
   }
+}
+
+/**
+ * Display query results
+ */
+function displayQueryResults(result: any): void {
+  // Show SQL
+  console.log(chalk.blue('\n📝 Generated SQL:'));
+  console.log(chalk.gray(formatSQL(result.sql)));
+
+  // Show execution time
+  console.log(
+    chalk.gray(`\n⚡ Execution time: ${result.executionTime}ms`)
+  );
+
+  // Show results
+  if (result.data.length === 0) {
+    console.log(chalk.yellow('\n(No rows returned)\n'));
+  } else {
+    console.log(chalk.green(`\n📊 Results (${result.rowCount} rows):\n`));
+    displayTable(result.data);
+  }
+
+  // Show suggestions
+  if (result.suggestions && result.suggestions.length > 0) {
+    console.log(chalk.yellow('\n💡 Suggestions:'));
+    result.suggestions.forEach((s: string) => console.log(chalk.gray(`  - ${s}`)));
+    console.log();
+  }
+
+  // Show learning indicator
+  if (result.learned) {
+    console.log(chalk.green('✓ Learned from this interaction\n'));
+  }
+}
+
+/**
+ * Collect missing data from user interactively
+ */
+async function collectMissingData(missingData: any): Promise<Record<string, string>> {
+  const collectedData: Record<string, string> = {};
+
+  console.log(chalk.cyan('Please provide the following information:\n'));
+
+  for (const columnInfo of missingData.columns) {
+    const questions: any[] = [];
+
+    if (columnInfo.possibleValues && columnInfo.possibleValues.length > 0) {
+      // Use list selection for predefined values
+      questions.push({
+        type: 'list',
+        name: columnInfo.column,
+        message: `${columnInfo.column} (${columnInfo.type}):`,
+        choices: [...columnInfo.possibleValues, new inquirer.Separator(), 'Custom value...'],
+      });
+
+      const answer = await inquirer.prompt(questions);
+
+      if (answer[columnInfo.column] === 'Custom value...') {
+        const { customValue } = await inquirer.prompt([
+          {
+            type: 'input',
+            name: 'customValue',
+            message: `Enter custom ${columnInfo.column}:`,
+            validate: (input: string) => input.trim() !== '' || 'Value cannot be empty',
+          },
+        ]);
+        collectedData[columnInfo.column] = customValue;
+      } else {
+        collectedData[columnInfo.column] = answer[columnInfo.column];
+      }
+    } else {
+      // Use input for free-form entry
+      const answer = await inquirer.prompt([
+        {
+          type: 'input',
+          name: columnInfo.column,
+          message: `${columnInfo.column} (${columnInfo.type}):`,
+          default: columnInfo.defaultValue,
+          validate: (input: string) => input.trim() !== '' || 'Value cannot be empty',
+        },
+      ]);
+      collectedData[columnInfo.column] = answer[columnInfo.column];
+    }
+  }
+
+  return collectedData;
+}
+
+/**
+ * Build updated SQL query with collected data
+ */
+async function buildQueryWithData(
+  originalSQL: string,
+  tableName: string,
+  collectedData: Record<string, string>
+): Promise<string> {
+  // Parse the original INSERT statement
+  const insertMatch = originalSQL.match(/INSERT\s+INTO\s+(\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)/i);
+
+  if (!insertMatch) {
+    return originalSQL;
+  }
+
+  const columns = insertMatch[2].split(',').map((c) => c.trim());
+  const values = insertMatch[3].split(',').map((v) => v.trim());
+
+  // Add missing columns and values
+  const newColumns = [...columns];
+  const newValues = [...values];
+
+  for (const [column, value] of Object.entries(collectedData)) {
+    newColumns.push(column);
+    // Properly quote the value
+    const quotedValue = isNaN(Number(value)) && value !== 'true' && value !== 'false'
+      ? `'${value.replace(/'/g, "''")}'`
+      : value;
+    newValues.push(quotedValue);
+  }
+
+  return `INSERT INTO ${tableName} (${newColumns.join(', ')}) VALUES (${newValues.join(', ')})`;
 }
 
 /**

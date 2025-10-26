@@ -212,12 +212,25 @@ export interface LinguisticAgentInput {
   learningHistory?: LearningEntry[];
 }
 
+export interface MissingColumnInfo {
+  column: string;
+  type: string;
+  description?: string;
+  defaultValue?: string;
+  possibleValues?: string[];
+}
+
 export interface LinguisticAgentOutput {
   sql: string;
   confidence: number;
   explanation: string;
   clarificationNeeded?: string;
   alternatives?: string[];
+  missingData?: {
+    table: string;
+    columns: MissingColumnInfo[];
+    reason: string;
+  };
 }
 
 export interface OptimizerAgentInput {

@@ -7,6 +7,7 @@ import {
   LinguisticAgentInput,
   LinguisticAgentOutput,
   LearningEntry,
+  MissingColumnInfo,
 } from '../types';
 import { BaseLLMProvider } from '../llm';
 import { logger } from '../utils/logger';
@@ -47,12 +48,16 @@ export class LinguisticAgent implements Agent {
         sqlLength: result.sql.length,
       }, 'SQL generated successfully');
 
+      // Check for missing required columns in INSERT/UPDATE statements
+      const missingData = this.detectMissingColumns(result.sql, schema);
+
       return {
         sql: result.sql,
         confidence: result.confidence,
         explanation: result.explanation,
         clarificationNeeded: result.confidence < 0.6 ? this.getClarificationQuestion(query.text) : undefined,
         alternatives: result.alternatives,
+        missingData,
       };
     } catch (error) {
       logger.error({ error }, 'Failed to generate SQL');
@@ -254,5 +259,79 @@ Return JSON with: { "sql": "SELECT ...", "explanation": "...", "confidence": 0.9
       valid: errors.length === 0,
       errors,
     };
+  }
+
+  /**
+   * Detect missing required columns in INSERT/UPDATE statements
+   */
+  private detectMissingColumns(
+    sql: string,
+    schema: any
+  ): { table: string; columns: MissingColumnInfo[]; reason: string } | undefined {
+    // Parse INSERT statement
+    const insertMatch = sql.match(/INSERT\s+INTO\s+(\w+)\s*\(([^)]+)\)/i);
+
+    if (!insertMatch) {
+      return undefined; // Not an INSERT statement
+    }
+
+    const tableName = insertMatch[1];
+    const providedColumnsStr = insertMatch[2];
+    const providedColumns = providedColumnsStr
+      .split(',')
+      .map((col) => col.trim().toLowerCase());
+
+    // Find the table schema
+    const table = schema.tables?.find((t: any) => t.name.toLowerCase() === tableName.toLowerCase());
+
+    if (!table) {
+      return undefined; // Table not found in schema
+    }
+
+    // Find required columns (NOT NULL and no default value)
+    const missingColumns: MissingColumnInfo[] = [];
+
+    for (const column of table.columns) {
+      const isProvided = providedColumns.includes(column.name.toLowerCase());
+      const isRequired = !column.nullable && !column.default && column.name.toLowerCase() !== 'id';
+
+      if (isRequired && !isProvided) {
+        // Determine possible values or suggestions based on column type
+        const columnInfo: MissingColumnInfo = {
+          column: column.name,
+          type: column.type,
+          description: column.description,
+        };
+
+        // Add suggestions based on column name and type
+        if (column.name.toLowerCase().includes('price')) {
+          columnInfo.possibleValues = ['0.00', '9.99', '19.99', '49.99', '99.99'];
+        } else if (column.name.toLowerCase().includes('stock')) {
+          columnInfo.possibleValues = ['0', '10', '50', '100'];
+        } else if (column.name.toLowerCase().includes('category')) {
+          columnInfo.possibleValues = ['Electronics', 'Clothing', 'Food', 'Books', 'Other'];
+        } else if (column.type.toLowerCase().includes('bool')) {
+          columnInfo.possibleValues = ['true', 'false'];
+        } else if (column.type.toLowerCase().includes('int')) {
+          columnInfo.defaultValue = '0';
+        } else if (column.type.toLowerCase().includes('numeric') || column.type.toLowerCase().includes('decimal')) {
+          columnInfo.defaultValue = '0.00';
+        } else {
+          columnInfo.defaultValue = '';
+        }
+
+        missingColumns.push(columnInfo);
+      }
+    }
+
+    if (missingColumns.length > 0) {
+      return {
+        table: tableName,
+        columns: missingColumns,
+        reason: `Missing required column(s): ${missingColumns.map((c) => c.column).join(', ')}`,
+      };
+    }
+
+    return undefined;
   }
 }
