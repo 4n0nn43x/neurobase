@@ -689,11 +689,15 @@ async function showSchema(nb: NeuroBase): Promise<void> {
   const spinner = ora('Loading schema...').start();
 
   try {
-    const schemaText = await nb.getSchemaIntrospector().getSchemaAsText();
+    const schemaMermaid = await nb.getSchemaIntrospector().getSchemaAsMermaid();
     spinner.stop();
 
-    console.log(chalk.cyan('\n📋 Database Schema:\n'));
-    console.log(chalk.gray(schemaText));
+    console.log(chalk.cyan('\n📊 Database Schema (UML/ER Diagram):\n'));
+    console.log(chalk.gray('Copy the diagram below and paste it into https://mermaid.live for visualization\n'));
+    console.log(chalk.yellow('─'.repeat(80)));
+    console.log(schemaMermaid);
+    console.log(chalk.yellow('─'.repeat(80)));
+    console.log(chalk.gray('\n💡 Tip: You can also save this to a .mmd file and open it in VS Code with Mermaid extension\n'));
   } catch (error) {
     spinner.fail('Failed to load schema');
     console.error(chalk.red('Error:'), error);

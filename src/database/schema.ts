@@ -360,6 +360,51 @@ export class SchemaIntrospector {
   }
 
   /**
+   * Get schema as Mermaid ER diagram
+   */
+  async getSchemaAsMermaid(): Promise<string> {
+    const schema = await this.getSchema();
+    let mermaid = 'erDiagram\n';
+
+    // Define entities (tables)
+    for (const table of schema.tables) {
+      mermaid += `    ${table.name} {\n`;
+
+      for (const column of table.columns) {
+        // Format: type columnName "constraints"
+        const isPK = table.primaryKeys.includes(column.name);
+        const isFK = table.foreignKeys.some(fk => fk.column === column.name);
+
+        let constraints = [];
+        if (isPK) constraints.push('PK');
+        if (isFK) constraints.push('FK');
+        if (!column.nullable) constraints.push('NOT NULL');
+
+        const constraintStr = constraints.length > 0 ? ` "${constraints.join(', ')}"` : '';
+
+        // Clean type name for Mermaid
+        const typeName = column.type.replace(/\s+/g, '_').replace(/[()]/g, '');
+
+        mermaid += `        ${typeName} ${column.name}${constraintStr}\n`;
+      }
+
+      mermaid += `    }\n`;
+    }
+
+    // Define relationships
+    mermaid += '\n';
+    for (const table of schema.tables) {
+      for (const fk of table.foreignKeys) {
+        // Relationship notation: TableA }o--|| TableB : "relationship"
+        // }o--|| means "zero or more to exactly one"
+        mermaid += `    ${table.name} }o--|| ${fk.referencedTable} : "${fk.column} references ${fk.referencedColumn}"\n`;
+      }
+    }
+
+    return mermaid;
+  }
+
+  /**
    * Clear the schema cache
    */
   clearCache(): void {
