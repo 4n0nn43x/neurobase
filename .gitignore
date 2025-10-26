@@ -17,6 +17,7 @@ build/
 .env.local
 .env.production
 .env.test
+*.env
 
 # Logs
 logs/

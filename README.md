@@ -92,6 +92,8 @@ NeuroBase uses a **multi-agent architecture** powered by Tiger Data's MCP (Model
 - 🔐 **Safe Execution**: Read-only mode for production databases
 - 🎯 **Intent Recognition**: Understands user goals beyond literal queries
 - 📝 **Interaction History**: Full audit trail of all conversations
+- 🧬 **Provider-Independent Embeddings**: Uses local Transformers.js model for semantic search, works with any LLM (OpenAI, Claude, Ollama)
+- 🚀 **pgvector Integration**: Native PostgreSQL vector search with IVFFlat indexing
 
 ---
 

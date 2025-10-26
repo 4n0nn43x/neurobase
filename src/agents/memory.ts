@@ -12,7 +12,8 @@ import {
 import { DatabaseConnection } from '../database/connection';
 import { BaseLLMProvider } from '../llm';
 import { logger } from '../utils/logger';
-import { v4 as uuidv4 } from 'uuid';
+import { embeddingService } from '../utils/embeddings';
+import pgvector from 'pgvector/pg';
 
 function uuidv4(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -77,7 +78,7 @@ export class MemoryAgent implements Agent {
         entry.embedding = await this.generateEmbedding(entry.naturalLanguage);
       }
 
-      // Store in database
+      // Store in database using pgvector
       await this.db.query(
         `
         INSERT INTO neurobase_learning_history
@@ -99,7 +100,7 @@ export class MemoryAgent implements Agent {
           entry.timestamp,
           entry.success,
           entry.corrected,
-          entry.embedding ? JSON.stringify(entry.embedding) : null,
+          entry.embedding ? pgvector.toSql(entry.embedding) : null,
           entry.context ? JSON.stringify(entry.context) : null,
         ]
       );
@@ -115,7 +116,7 @@ export class MemoryAgent implements Agent {
   }
 
   /**
-   * Retrieve similar queries using semantic search
+   * Retrieve similar queries using pgvector semantic search
    */
   private async retrieveSimilar(query: string): Promise<MemoryAgentOutput> {
     logger.info('Retrieving similar queries', {
@@ -126,7 +127,7 @@ export class MemoryAgent implements Agent {
       // Generate embedding for the query
       const queryEmbedding = await this.generateEmbedding(query);
 
-      // Retrieve all entries (in production, use pgvector for efficient similarity search)
+      // Use pgvector for efficient similarity search with cosine distance
       const result = await this.db.query<{
         id: string;
         natural_language: string;
@@ -135,9 +136,11 @@ export class MemoryAgent implements Agent {
         timestamp: Date;
         success: boolean;
         corrected: boolean;
-        embedding: string | null;
+        embedding: string;
         context: string | null;
-      }>(`
+        similarity: number;
+      }>(
+        `
         SELECT
           id,
           natural_language,
@@ -146,43 +149,34 @@ export class MemoryAgent implements Agent {
           timestamp,
           success,
           corrected,
-          embedding,
-          context
+          embedding::text,
+          context,
+          1 - (embedding <=> $1) as similarity
         FROM neurobase_learning_history
-        WHERE success = true AND corrected = false
-        ORDER BY timestamp DESC
-        LIMIT 100
-      `);
+        WHERE success = true AND corrected = false AND embedding IS NOT NULL
+        ORDER BY embedding <=> $1
+        LIMIT 5
+      `,
+        [pgvector.toSql(queryEmbedding)]
+      );
 
-      // Calculate cosine similarity for each entry
-      const similarities = result.rows
-        .filter((row) => row.embedding)
-        .map((row) => {
-          const embedding = JSON.parse(row.embedding!);
-          const similarity = this.cosineSimilarity(queryEmbedding, embedding);
+      const relevantEntries = result.rows.map((row) => ({
+        id: row.id,
+        naturalLanguage: row.natural_language,
+        sql: row.sql,
+        userId: row.user_id || undefined,
+        timestamp: row.timestamp,
+        success: row.success,
+        corrected: row.corrected,
+        embedding: pgvector.fromSql(row.embedding),
+        context: row.context ? JSON.parse(row.context) : undefined,
+      }));
 
-          return {
-            entry: {
-              id: row.id,
-              naturalLanguage: row.natural_language,
-              sql: row.sql,
-              userId: row.user_id || undefined,
-              timestamp: row.timestamp,
-              success: row.success,
-              corrected: row.corrected,
-              embedding,
-              context: row.context ? JSON.parse(row.context) : undefined,
-            },
-            similarity,
-          };
-        })
-        .sort((a, b) => b.similarity - a.similarity)
-        .slice(0, 5);
-
-      const relevantEntries = similarities.map((s) => s.entry);
-      const similarQueries = similarities
-        .filter((s) => s.similarity > 0.7)
-        .map((s) => s.entry);
+      // Filter by similarity threshold (> 0.7)
+      const similarQueries = relevantEntries.filter((_, idx) => {
+        const similarity = result.rows[idx].similarity;
+        return similarity > 0.7;
+      });
 
       return {
         success: true,
@@ -291,7 +285,7 @@ export class MemoryAgent implements Agent {
         timestamp,
         success,
         corrected,
-        embedding,
+        embedding::text,
         context
       FROM neurobase_learning_history
       WHERE ($1::text IS NULL OR user_id = $1)
@@ -309,13 +303,14 @@ export class MemoryAgent implements Agent {
       timestamp: row.timestamp,
       success: row.success,
       corrected: row.corrected,
-      embedding: row.embedding ? JSON.parse(row.embedding) : undefined,
+      embedding: row.embedding ? pgvector.fromSql(row.embedding) : undefined,
       context: row.context ? JSON.parse(row.context) : undefined,
     }));
   }
 
   /**
-   * Generate embedding for text
+   * Generate embedding for text using local embedding service
+   * This is provider-independent and works with any LLM (OpenAI, Claude, Ollama)
    */
   private async generateEmbedding(text: string): Promise<number[]> {
     // Check cache first
@@ -324,7 +319,9 @@ export class MemoryAgent implements Agent {
     }
 
     try {
-      const embedding = await this.llm.generateEmbedding(text);
+      // Use local embedding service (Transformers.js)
+      // This works regardless of which LLM provider is chosen for queries
+      const embedding = await embeddingService.generateEmbedding(text);
       this.embeddingCache.set(text, embedding);
       return embedding;
     } catch (error) {
@@ -388,6 +385,10 @@ export class MemoryAgent implements Agent {
     logger.info('Initializing memory storage tables');
 
     await this.db.query(`
+      -- Enable pgvector extension
+      CREATE EXTENSION IF NOT EXISTS vector;
+
+      -- Learning history table with pgvector support
       CREATE TABLE IF NOT EXISTS neurobase_learning_history (
         id TEXT PRIMARY KEY,
         natural_language TEXT NOT NULL,
@@ -396,7 +397,7 @@ export class MemoryAgent implements Agent {
         timestamp TIMESTAMP NOT NULL,
         success BOOLEAN NOT NULL DEFAULT true,
         corrected BOOLEAN NOT NULL DEFAULT false,
-        embedding TEXT, -- JSON array
+        embedding vector(384), -- pgvector for embeddings (384 dimensions for all-MiniLM-L6-v2)
         context TEXT -- JSON object
       );
 
@@ -406,6 +407,12 @@ export class MemoryAgent implements Agent {
       CREATE INDEX IF NOT EXISTS idx_learning_history_user_id
         ON neurobase_learning_history(user_id)
         WHERE user_id IS NOT NULL;
+
+      -- Create vector similarity index for fast semantic search
+      CREATE INDEX IF NOT EXISTS idx_learning_history_embedding
+        ON neurobase_learning_history
+        USING ivfflat (embedding vector_cosine_ops)
+        WITH (lists = 100);
 
       CREATE TABLE IF NOT EXISTS neurobase_corrections (
         id TEXT PRIMARY KEY,

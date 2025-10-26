@@ -1,6 +1,9 @@
 -- NeuroBase Initialization Script
 -- This script creates sample tables for demonstration
 
+-- Enable pgvector extension for vector embeddings
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- E-commerce Example Schema
 
 -- Users table
