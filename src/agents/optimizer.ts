@@ -32,9 +32,9 @@ export class OptimizerAgent implements Agent {
   async process(input: OptimizerAgentInput): Promise<OptimizerAgentOutput> {
     const { sql, schema } = input;
 
-    logger.info('Analyzing query for optimization', {
+    logger.info({
       sqlLength: sql.length,
-    });
+    }, 'Analyzing query for optimization');
 
     try {
       // Get execution plan
@@ -81,7 +81,7 @@ export class OptimizerAgent implements Agent {
         applied,
       };
     } catch (error) {
-      logger.error('Query optimization failed', { error });
+      logger.error({ error }, 'Query optimization failed');
       // Return original SQL on error
       return {
         optimizedSQL: sql,
@@ -122,7 +122,7 @@ export class OptimizerAgent implements Agent {
         actualTime: plan['Execution Time'] || 0,
       };
     } catch (error) {
-      logger.error('Failed to get execution plan', { error });
+      logger.error({ error }, 'Failed to get execution plan');
       throw error;
     }
   }
@@ -185,7 +185,7 @@ export class OptimizerAgent implements Agent {
 
       suggestions.push(...llmSuggestions);
     } catch (error) {
-      logger.warn('LLM optimization suggestions failed', { error });
+      logger.warn({ error }, 'LLM optimization suggestions failed');
     }
 
     return suggestions;
@@ -304,7 +304,7 @@ Return JSON array of suggestions:
         }));
       }
     } catch (error) {
-      logger.warn('Failed to parse LLM optimization suggestions', { error });
+      logger.warn({ error }, 'Failed to parse LLM optimization suggestions');
     }
 
     return [];
@@ -316,7 +316,7 @@ Return JSON array of suggestions:
   private async applyOptimizations(
     sql: string,
     suggestions: OptimizationSuggestion[],
-    schema: any
+    _schema: any
   ): Promise<{ sql: string; applied: boolean }> {
     // For now, we only apply index creation suggestions
     const indexSuggestions = suggestions.filter(
@@ -329,17 +329,17 @@ Return JSON array of suggestions:
       try {
         if (suggestion.sql) {
           await this.db.query(suggestion.sql);
-          logger.info('Applied optimization', {
+          logger.info({
             type: suggestion.type,
             sql: suggestion.sql,
-          });
+          }, 'Applied optimization');
           applied = true;
         }
       } catch (error) {
-        logger.error('Failed to apply optimization', {
+        logger.error({
           sql: suggestion.sql,
           error,
-        });
+        }, 'Failed to apply optimization');
       }
     }
 

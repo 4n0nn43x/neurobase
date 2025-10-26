@@ -7,7 +7,6 @@
 
 import { NeuroBase } from '../core/neurobase';
 import { config } from '../config';
-import { logger } from '../utils/logger';
 import * as readline from 'readline';
 
 const rl = readline.createInterface({

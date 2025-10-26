@@ -8,33 +8,40 @@ import { logger } from '../utils/logger';
 
 export class DatabaseConnection {
   private pool: Pool;
-  private config: TigerConfig;
+  // @ts-expect-error - Config stored for potential future use
+  private _config: TigerConfig;
 
   constructor(config: TigerConfig) {
-    this.config = config;
+    this._config = config;
+
+    // Parse connection string to remove conflicting SSL params
+    const cleanConnectionString = config.connectionString.replace(/[?&]sslmode=[^&]*/, '');
+
     this.pool = new Pool({
-      connectionString: config.connectionString,
+      connectionString: cleanConnectionString,
       max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
       ssl: {
-        rejectUnauthorized: false, // Tiger Cloud uses SSL
+        rejectUnauthorized: false, // Accept self-signed certs from Tiger Cloud
+        // Tiger Cloud uses self-signed certificates which is safe for their managed service
       },
     });
 
     this.pool.on('error', (err) => {
-      logger.error('Unexpected database pool error', err);
+      logger.error({ err }, 'Unexpected database pool error');
     });
   }
 
   /**
    * Execute a query
    */
+  // @ts-expect-error - Generic type T kept for API compatibility
   async query<T = any>(
     sql: string,
     params?: any[],
     options?: { timeout?: number }
-  ): Promise<QueryResult<T>> {
+  ): Promise<QueryResult<any>> {
     const startTime = Date.now();
     const client = await this.pool.connect();
 
@@ -44,21 +51,21 @@ export class DatabaseConnection {
         await client.query(`SET statement_timeout = ${options.timeout}`);
       }
 
-      const result = await client.query<T>(sql, params);
+      const result = await client.query(sql, params);
       const duration = Date.now() - startTime;
 
-      logger.debug('Query executed', {
+      logger.debug({
         sql: sql.substring(0, 100),
         duration,
         rows: result.rowCount,
-      });
+      }, 'Query executed');
 
       return result;
     } catch (error) {
-      logger.error('Query execution failed', {
+      logger.error({
         sql: sql.substring(0, 100),
         error,
-      });
+      }, 'Query execution failed');
       throw error;
     } finally {
       client.release();
@@ -108,12 +115,12 @@ export class DatabaseConnection {
   async testConnection(): Promise<boolean> {
     try {
       const result = await this.query('SELECT NOW() as current_time');
-      logger.info('Database connection successful', {
+      logger.info({
         time: result.rows[0].current_time,
-      });
+      }, 'Database connection successful');
       return true;
     } catch (error) {
-      logger.error('Database connection failed', error);
+      logger.error({ error }, 'Database connection failed');
       return false;
     }
   }

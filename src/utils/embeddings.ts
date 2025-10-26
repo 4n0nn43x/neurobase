@@ -39,12 +39,12 @@ export class EmbeddingService {
       this.embedder = await pipeline(
         'feature-extraction',
         'Xenova/all-MiniLM-L6-v2'
-      );
+      ) as any;
 
       this.initialized = true;
       logger.info('Local embedding model initialized successfully');
     } catch (error) {
-      logger.error('Failed to initialize embedding model', { error });
+      logger.error({ error }, 'Failed to initialize embedding model');
       throw new Error(`Embedding initialization failed: ${error}`);
     }
   }
@@ -69,7 +69,7 @@ export class EmbeddingService {
 
       return embedding;
     } catch (error) {
-      logger.error('Failed to generate embedding', { error, textLength: text.length });
+      logger.error({ error, textLength: text.length }, 'Failed to generate embedding');
 
       // Fallback: simple hash-based embedding
       logger.warn('Using fallback hash-based embedding');

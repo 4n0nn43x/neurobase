@@ -120,7 +120,7 @@ export class SchemaIntrospector {
       name: row.column_name,
       type: row.data_type,
       nullable: row.is_nullable === 'YES',
-      default: row.column_default,
+      default: row.column_default || undefined,
     }));
   }
 

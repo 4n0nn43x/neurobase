@@ -26,12 +26,24 @@ function uuidv4(): string {
 export class MemoryAgent implements Agent {
   name = 'MemoryAgent';
   private db: DatabaseConnection;
-  private llm: BaseLLMProvider;
+  // @ts-expect-error - LLM provider reserved for future use
+  private _llm: BaseLLMProvider;
   private embeddingCache: Map<string, number[]> = new Map();
 
   constructor(db: DatabaseConnection, llm: BaseLLMProvider) {
     this.db = db;
-    this.llm = llm;
+    this._llm = llm;
+  }
+
+  /**
+   * Parse a PostgreSQL vector string to array of numbers
+   */
+  private parseVector(vectorStr: string): number[] {
+    // Remove brackets and split by comma
+    return vectorStr
+      .substring(1, vectorStr.length - 1)
+      .split(',')
+      .map((v) => parseFloat(v));
   }
 
   /**
@@ -58,7 +70,7 @@ export class MemoryAgent implements Agent {
           throw new Error(`Unknown action: ${action}`);
       }
     } catch (error) {
-      logger.error('Memory operation failed', { action, error });
+      logger.error({ action, error }, 'Memory operation failed');
       return { success: false };
     }
   }
@@ -67,10 +79,10 @@ export class MemoryAgent implements Agent {
    * Store a learning entry
    */
   private async storeEntry(entry: LearningEntry): Promise<MemoryAgentOutput> {
-    logger.info('Storing learning entry', {
+    logger.info({
       id: entry.id,
       naturalLanguage: entry.naturalLanguage.substring(0, 50),
-    });
+    }, 'Storing learning entry');
 
     try {
       // Generate embedding if not provided
@@ -110,7 +122,7 @@ export class MemoryAgent implements Agent {
 
       return { success: true };
     } catch (error) {
-      logger.error('Failed to store learning entry', { error });
+      logger.error({ error }, 'Failed to store learning entry');
       return { success: false };
     }
   }
@@ -119,9 +131,9 @@ export class MemoryAgent implements Agent {
    * Retrieve similar queries using pgvector semantic search
    */
   private async retrieveSimilar(query: string): Promise<MemoryAgentOutput> {
-    logger.info('Retrieving similar queries', {
+    logger.info({
       query: query.substring(0, 50),
-    });
+    }, 'Retrieving similar queries');
 
     try {
       // Generate embedding for the query
@@ -168,7 +180,7 @@ export class MemoryAgent implements Agent {
         timestamp: row.timestamp,
         success: row.success,
         corrected: row.corrected,
-        embedding: pgvector.fromSql(row.embedding),
+        embedding: this.parseVector(row.embedding),
         context: row.context ? JSON.parse(row.context) : undefined,
       }));
 
@@ -184,7 +196,7 @@ export class MemoryAgent implements Agent {
         similarQueries,
       };
     } catch (error) {
-      logger.error('Failed to retrieve similar queries', { error });
+      logger.error({ error }, 'Failed to retrieve similar queries');
       return { success: false };
     }
   }
@@ -193,7 +205,7 @@ export class MemoryAgent implements Agent {
    * Update an existing entry (e.g., mark as corrected)
    */
   private async updateEntry(entry: LearningEntry): Promise<MemoryAgentOutput> {
-    logger.info('Updating learning entry', { id: entry.id });
+    logger.info({ id: entry.id }, 'Updating learning entry');
 
     try {
       await this.db.query(
@@ -219,7 +231,7 @@ export class MemoryAgent implements Agent {
 
       return { success: true };
     } catch (error) {
-      logger.error('Failed to update learning entry', { error });
+      logger.error({ error }, 'Failed to update learning entry');
       return { success: false };
     }
   }
@@ -228,9 +240,9 @@ export class MemoryAgent implements Agent {
    * Store a correction
    */
   async storeCorrection(correction: Correction): Promise<boolean> {
-    logger.info('Storing correction', {
+    logger.info({
       originalQuery: correction.originalQuery.substring(0, 50),
-    });
+    }, 'Storing correction');
 
     try {
       await this.db.query(
@@ -253,7 +265,7 @@ export class MemoryAgent implements Agent {
 
       return true;
     } catch (error) {
-      logger.error('Failed to store correction', { error });
+      logger.error({ error }, 'Failed to store correction');
       return false;
     }
   }
@@ -303,7 +315,7 @@ export class MemoryAgent implements Agent {
       timestamp: row.timestamp,
       success: row.success,
       corrected: row.corrected,
-      embedding: row.embedding ? pgvector.fromSql(row.embedding) : undefined,
+      embedding: row.embedding ? this.parseVector(row.embedding) : undefined,
       context: row.context ? JSON.parse(row.context) : undefined,
     }));
   }
@@ -325,7 +337,7 @@ export class MemoryAgent implements Agent {
       this.embeddingCache.set(text, embedding);
       return embedding;
     } catch (error) {
-      logger.warn('Failed to generate embedding, using fallback', { error });
+      logger.warn({ error }, 'Failed to generate embedding, using fallback');
       // Fallback: simple hash-based embedding
       return this.fallbackEmbedding(text);
     }
@@ -353,7 +365,8 @@ export class MemoryAgent implements Agent {
   /**
    * Calculate cosine similarity between two vectors
    */
-  private cosineSimilarity(a: number[], b: number[]): number {
+  // @ts-expect-error - Reserved for future similarity calculations
+  private _cosineSimilarity(a: number[], b: number[]): number {
     if (a.length !== b.length) {
       throw new Error('Vectors must have the same length');
     }

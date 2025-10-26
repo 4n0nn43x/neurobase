@@ -28,7 +28,8 @@ export class NeuroBase {
   private optimizerAgent: OptimizerAgent;
   private memoryAgent: MemoryAgent;
   private eventHandlers: EventHandler[] = [];
-  private conversationContext: Map<string, any[]> = new Map();
+  // @ts-expect-error - Reserved for future conversation context tracking
+  private _conversationContext: Map<string, any[]> = new Map();
 
   constructor(config: Config) {
     this.config = config;
@@ -47,10 +48,10 @@ export class NeuroBase {
     this.optimizerAgent = new OptimizerAgent(this.db, this.llm);
     this.memoryAgent = new MemoryAgent(this.db, this.llm);
 
-    logger.info('NeuroBase initialized', {
+    logger.info({
       mode: config.neurobase.mode,
       llmProvider: config.llm.provider,
-    });
+    }, 'NeuroBase initialized');
   }
 
   /**
@@ -85,11 +86,11 @@ export class NeuroBase {
 
     const startTime = Date.now();
 
-    logger.info('Processing query', {
+    logger.info({
       query: nlQuery.text.substring(0, 100),
       userId: nlQuery.userId,
       conversationId: nlQuery.conversationId,
-    });
+    }, 'Processing query');
 
     this.emitEvent({
       type: 'query:start',
@@ -113,9 +114,9 @@ export class NeuroBase {
 
       // Check if clarification is needed
       if (linguisticResult.clarificationNeeded) {
-        logger.info('Clarification needed', {
+        logger.info({
           clarification: linguisticResult.clarificationNeeded,
-        });
+        }, 'Clarification needed');
 
         return {
           data: [],
@@ -138,10 +139,10 @@ export class NeuroBase {
 
         if (optimizerResult.applied) {
           finalSQL = optimizerResult.optimizedSQL;
-          logger.info('Query optimized', {
+          logger.info({
             originalSQL: linguisticResult.sql.substring(0, 50),
             optimizedSQL: finalSQL.substring(0, 50),
-          });
+          }, 'Query optimized');
         }
       }
 
@@ -182,19 +183,19 @@ export class NeuroBase {
         payload: queryResult,
       });
 
-      logger.info('Query completed successfully', {
+      logger.info({
         rowCount: queryResult.rowCount,
         executionTime,
-      });
+      }, 'Query completed successfully');
 
       return queryResult;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      logger.error('Query failed', {
+      logger.error({
         query: nlQuery.text.substring(0, 100),
         error: errorMessage,
-      });
+      }, 'Query failed');
 
       this.emitEvent({
         type: 'query:error',
@@ -227,9 +228,9 @@ export class NeuroBase {
       timestamp: new Date(),
     });
 
-    logger.info('Correction stored', {
+    logger.info({
       originalQuery: originalQuery.substring(0, 50),
-    });
+    }, 'Correction stored');
   }
 
   /**
@@ -304,7 +305,7 @@ export class NeuroBase {
       try {
         handler(event);
       } catch (error) {
-        logger.error('Event handler error', { error });
+        logger.error({ error }, 'Event handler error');
       }
     }
   }

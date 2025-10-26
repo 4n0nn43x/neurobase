@@ -53,7 +53,7 @@ export class AnthropicProvider extends BaseLLMProvider {
     };
   }
 
-  async generateEmbedding(text: string): Promise<number[]> {
+  async generateEmbedding(_text: string): Promise<number[]> {
     // Anthropic doesn't provide embeddings directly
     // Fall back to a simple hash-based embedding for demonstration
     // In production, you'd use a dedicated embedding service

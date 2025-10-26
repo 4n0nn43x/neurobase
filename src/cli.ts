@@ -10,8 +10,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import Table from 'cli-table3';
 import { NeuroBase } from './core/neurobase';
-import { config, loadConfig } from './config';
-import { logger } from './utils/logger';
+import { config } from './config';
 
 const program = new Command();
 
