@@ -79,7 +79,7 @@ export class MemoryAgent implements Agent {
    * Store a learning entry
    */
   private async storeEntry(entry: LearningEntry): Promise<MemoryAgentOutput> {
-    logger.info({
+    logger.debug({
       id: entry.id,
       naturalLanguage: entry.naturalLanguage.substring(0, 50),
     }, 'Storing learning entry');
@@ -131,7 +131,7 @@ export class MemoryAgent implements Agent {
    * Retrieve similar queries using pgvector semantic search
    */
   private async retrieveSimilar(query: string): Promise<MemoryAgentOutput> {
-    logger.info({
+    logger.debug({
       query: query.substring(0, 50),
     }, 'Retrieving similar queries');
 
@@ -205,7 +205,7 @@ export class MemoryAgent implements Agent {
    * Update an existing entry (e.g., mark as corrected)
    */
   private async updateEntry(entry: LearningEntry): Promise<MemoryAgentOutput> {
-    logger.info({ id: entry.id }, 'Updating learning entry');
+    logger.debug({ id: entry.id }, 'Updating learning entry');
 
     try {
       await this.db.query(
@@ -240,7 +240,7 @@ export class MemoryAgent implements Agent {
    * Store a correction
    */
   async storeCorrection(correction: Correction): Promise<boolean> {
-    logger.info({
+    logger.debug({
       originalQuery: correction.originalQuery.substring(0, 50),
     }, 'Storing correction');
 
@@ -395,7 +395,7 @@ export class MemoryAgent implements Agent {
    * Initialize memory storage tables
    */
   async initializeStorage(): Promise<void> {
-    logger.info('Initializing memory storage tables');
+    logger.debug('Initializing memory storage tables');
 
     await this.db.query(`
       -- Enable pgvector extension
@@ -442,6 +442,6 @@ export class MemoryAgent implements Agent {
         ON neurobase_corrections(timestamp DESC);
     `);
 
-    logger.info('Memory storage tables initialized');
+    logger.debug('Memory storage tables initialized');
   }
 }

@@ -35,7 +35,7 @@ export class SchemaIntrospector {
       return this.cache;
     }
 
-    logger.info('Introspecting database schema');
+    logger.debug('Introspecting database schema');
 
     const [tables, views, functions] = await Promise.all([
       this.getTables(),

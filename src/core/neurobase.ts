@@ -48,7 +48,7 @@ export class NeuroBase {
     this.optimizerAgent = new OptimizerAgent(this.db, this.llm);
     this.memoryAgent = new MemoryAgent(this.db, this.llm);
 
-    logger.info({
+    logger.debug({
       mode: config.neurobase.mode,
       llmProvider: config.llm.provider,
     }, 'NeuroBase initialized');
@@ -58,7 +58,7 @@ export class NeuroBase {
    * Initialize NeuroBase (test connection, setup tables, etc.)
    */
   async initialize(): Promise<void> {
-    logger.info('Starting NeuroBase initialization');
+    logger.debug('Starting NeuroBase initialization');
 
     // Test database connection
     const connected = await this.db.testConnection();
@@ -74,7 +74,7 @@ export class NeuroBase {
     // Introspect schema
     await this.schema.getSchema();
 
-    logger.info('NeuroBase initialization complete');
+    logger.debug('NeuroBase initialization complete');
   }
 
   /**
@@ -86,7 +86,7 @@ export class NeuroBase {
 
     const startTime = Date.now();
 
-    logger.info({
+    logger.debug({
       query: nlQuery.text.substring(0, 100),
       userId: nlQuery.userId,
       conversationId: nlQuery.conversationId,
@@ -114,7 +114,7 @@ export class NeuroBase {
 
       // Check if clarification is needed
       if (linguisticResult.clarificationNeeded) {
-        logger.info({
+        logger.debug({
           clarification: linguisticResult.clarificationNeeded,
         }, 'Clarification needed');
 
@@ -139,7 +139,7 @@ export class NeuroBase {
 
         if (optimizerResult.applied) {
           finalSQL = optimizerResult.optimizedSQL;
-          logger.info({
+          logger.debug({
             originalSQL: linguisticResult.sql.substring(0, 50),
             optimizedSQL: finalSQL.substring(0, 50),
           }, 'Query optimized');
@@ -183,7 +183,7 @@ export class NeuroBase {
         payload: queryResult,
       });
 
-      logger.info({
+      logger.debug({
         rowCount: queryResult.rowCount,
         executionTime,
       }, 'Query completed successfully');
@@ -228,7 +228,7 @@ export class NeuroBase {
       timestamp: new Date(),
     });
 
-    logger.info({
+    logger.debug({
       originalQuery: originalQuery.substring(0, 50),
     }, 'Correction stored');
   }
@@ -315,7 +315,7 @@ export class NeuroBase {
    */
   async close(): Promise<void> {
     await this.db.close();
-    logger.info('NeuroBase closed');
+    logger.debug('NeuroBase closed');
   }
 
   /**
@@ -338,6 +338,6 @@ export class NeuroBase {
   async refreshSchema(): Promise<void> {
     this.schema.clearCache();
     await this.schema.getSchema();
-    logger.info('Schema cache refreshed');
+    logger.debug('Schema cache refreshed');
   }
 }

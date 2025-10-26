@@ -32,7 +32,7 @@ export class EmbeddingService {
     }
 
     try {
-      logger.info('Initializing local embedding model (all-MiniLM-L6-v2)...');
+      logger.debug('Initializing local embedding model (all-MiniLM-L6-v2)...');
 
       // Use a lightweight, high-quality embedding model
       // all-MiniLM-L6-v2: 384 dimensions, fast, good quality
@@ -42,7 +42,7 @@ export class EmbeddingService {
       ) as any;
 
       this.initialized = true;
-      logger.info('Local embedding model initialized successfully');
+      logger.debug('Local embedding model initialized successfully');
     } catch (error) {
       logger.error({ error }, 'Failed to initialize embedding model');
       throw new Error(`Embedding initialization failed: ${error}`);

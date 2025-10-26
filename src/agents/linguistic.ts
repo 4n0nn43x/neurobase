@@ -25,7 +25,7 @@ export class LinguisticAgent implements Agent {
   async process(input: LinguisticAgentInput): Promise<LinguisticAgentOutput> {
     const { query, schema, learningHistory } = input;
 
-    logger.info({
+    logger.debug({
       query: query.text.substring(0, 100),
     }, 'Processing natural language query');
 
@@ -42,7 +42,7 @@ export class LinguisticAgent implements Agent {
       // Generate SQL using LLM
       const result = await this.generateSQL(query.text, schemaText, examples);
 
-      logger.info({
+      logger.debug({
         confidence: result.confidence,
         sqlLength: result.sql.length,
       }, 'SQL generated successfully');

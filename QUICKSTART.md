@@ -132,7 +132,7 @@ Database Statistics:
 ### Interactive CLI
 
 ```bash
-npm start
+npm start i
 ```
 
 Try these queries:

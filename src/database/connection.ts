@@ -115,7 +115,7 @@ export class DatabaseConnection {
   async testConnection(): Promise<boolean> {
     try {
       const result = await this.query('SELECT NOW() as current_time');
-      logger.info({
+      logger.debug({
         time: result.rows[0].current_time,
       }, 'Database connection successful');
       return true;
@@ -161,6 +161,6 @@ export class DatabaseConnection {
    */
   async close(): Promise<void> {
     await this.pool.end();
-    logger.info('Database pool closed');
+    logger.debug('Database pool closed');
   }
 }

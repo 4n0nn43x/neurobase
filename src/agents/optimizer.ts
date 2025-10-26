@@ -32,7 +32,7 @@ export class OptimizerAgent implements Agent {
   async process(input: OptimizerAgentInput): Promise<OptimizerAgentOutput> {
     const { sql, schema } = input;
 
-    logger.info({
+    logger.debug({
       sqlLength: sql.length,
     }, 'Analyzing query for optimization');
 
@@ -329,7 +329,7 @@ Return JSON array of suggestions:
       try {
         if (suggestion.sql) {
           await this.db.query(suggestion.sql);
-          logger.info({
+          logger.debug({
             type: suggestion.type,
             sql: suggestion.sql,
           }, 'Applied optimization');
