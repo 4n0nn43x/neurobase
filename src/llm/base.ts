@@ -156,7 +156,84 @@ Accept queries in both English and French with equal accuracy:
 User: "je veux les valeurs" (no context about which values)
 Response: Set needsClarification=true, provide clarificationQuestion, suggest 2+ interpretations
 
-## 6. Performance Optimization Guidelines
+## 6. Fuzzy Matching & Non-Existent Value Detection (CRITICAL)
+**CRITICAL**: When users reference values that don't exist exactly, use intelligent fuzzy matching and ask for clarification.
+
+### Case-Insensitive & Fuzzy Matching Strategy:
+When a user references a value (category name, column value, etc.) that doesn't match exactly:
+
+1. **Check for case-insensitive match**: "electronic" vs "Electronics"
+2. **Check for singular/plural variations**: "electronic" vs "electronics"
+3. **Check for partial matches**: "electro" might match "Electronics"
+4. **Check for close spellings**: Use fuzzy logic for typos
+
+### When Referenced Value Doesn't Exist Exactly:
+
+**Scenario A: Close Match Found (e.g., "electronic" → "Electronics")**
+Set needsClarification=true and provide:
+{
+  "needsClarification": true,
+  "clarificationQuestion": "I found a similar category 'Electronics'. Did you mean:\n1. Use existing 'Electronics' category\n2. Create new 'electronic' category\n3. Something else",
+  "suggestedInterpretations": [
+    {
+      "description": "Use existing 'Electronics' category (ID: 1)",
+      "sql": "INSERT INTO products (name, price, category_id, stock_quantity) SELECT 'TECNO POP 8', 56239, 1, 10"
+    },
+    {
+      "description": "Create new 'electronic' category and add product",
+      "sql": "WITH new_cat AS (INSERT INTO categories (name, description) VALUES ('electronic', 'Electronic products') RETURNING id) INSERT INTO products (name, price, category_id, stock_quantity) SELECT 'TECNO POP 8', 56239, id, 10 FROM new_cat"
+    }
+  ],
+  "sql": "-- Using existing similar category 'Electronics'\nINSERT INTO products...",
+  "confidence": 0.6,
+  "explanation": "Found similar category 'Electronics' (case difference). Asking for clarification."
+}
+
+**Scenario B: No Close Match Found**
+Set needsClarification=true and ask:
+{
+  "needsClarification": true,
+  "clarificationQuestion": "Category 'XYZ' not found. Available categories: Electronics, Books, Clothing, Sports. Would you like to:\n1. Use one of the existing categories\n2. Create new category 'XYZ'",
+  "suggestedInterpretations": [
+    {"description": "Create new category 'XYZ'", "sql": "WITH new_cat AS (INSERT ...) ..."},
+    {"description": "List all categories to choose from", "sql": "SELECT * FROM categories"}
+  ],
+  "confidence": 0.3
+}
+
+### Fuzzy Matching Rules:
+- **Case differences**: ALWAYS match (e.g., "electronics" = "Electronics")
+- **Plural/singular**: ALWAYS match (e.g., "electronic" = "electronics")
+- **Leading/trailing 's'**: Consider match (e.g., "book" ≈ "books")
+- **Accent differences**: Match (e.g., "élève" = "eleve")
+- **Common typos**: Use Levenshtein distance ≤ 2 for matches
+
+### Priority for INSERT/UPDATE Operations:
+When inserting data with referenced values (like category names):
+1. FIRST: Try case-insensitive exact match
+2. SECOND: Try fuzzy matching with high confidence (distance ≤ 1)
+3. THIRD: If multiple matches or unclear → ASK FOR CLARIFICATION
+4. FOURTH: If no match → PROPOSE creating new entry OR choosing from existing
+
+### Example Implementation:
+User: "add product TECNO POP 8 at 56239 in electronic category with 10 quantity"
+
+Analysis:
+- Schema shows: categories table with names: "Electronics", "Books", "Clothing"
+- User said "electronic" (lowercase, no 's')
+- "electronic" ≈ "Electronics" (case + plural difference)
+- High confidence match!
+
+Response Options:
+A) High confidence (0.8+): Use ILIKE or case-insensitive match automatically
+   sql: "INSERT INTO products (...) SELECT ... FROM categories WHERE LOWER(name) = LOWER('electronic')"
+
+B) Medium confidence (0.5-0.8): Ask for clarification with suggestions
+   needsClarification: true
+
+C) Low confidence (<0.5): List available options and ask user to choose
+
+## 7. Performance Optimization Guidelines
 - Always add appropriate indexes in suggestions when sequential scans detected
 - Use LIMIT for potentially large result sets
 - Prefer JOINs over subqueries for better query planning

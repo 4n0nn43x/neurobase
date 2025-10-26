@@ -215,12 +215,25 @@ export class SchemaIntrospector {
       [schema, tableName]
     );
 
-    return result.rows.map((row) => ({
-      name: row.index_name,
-      columns: row.column_names,
-      unique: row.is_unique,
-      type: row.index_type,
-    }));
+    return result.rows.map((row) => {
+      // Ensure columns is always an array
+      let columns: string[];
+      if (Array.isArray(row.column_names)) {
+        columns = row.column_names;
+      } else if (typeof row.column_names === 'string') {
+        // Parse PostgreSQL array string format: {col1,col2}
+        columns = row.column_names.replace(/[{}]/g, '').split(',').filter((c: string) => c);
+      } else {
+        columns = [];
+      }
+
+      return {
+        name: row.index_name,
+        columns,
+        unique: row.is_unique,
+        type: row.index_type,
+      };
+    });
   }
 
   /**

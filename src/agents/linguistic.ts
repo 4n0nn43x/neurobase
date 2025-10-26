@@ -136,6 +136,20 @@ Handle English, French, mixed queries equally.
 ## Ambiguity Handling
 When ambiguous: needsClarification=true, provide clarificationQuestion and suggestedInterpretations
 
+## Fuzzy Matching for Referenced Values (CRITICAL)
+When users reference values (category names, etc.) that don't match exactly:
+1. Try case-insensitive match: "electronic" matches "Electronics"
+2. Try singular/plural: "electronic" matches "electronics"
+3. If close match found (1-2 char difference): ASK FOR CLARIFICATION with options:
+   - Use existing similar value
+   - Create new value
+4. Use ILIKE or LOWER() for case-insensitive WHERE clauses
+5. Example: WHERE LOWER(name) = LOWER('electronic') instead of WHERE name = 'electronic'
+
+When value doesn't exist, set needsClarification=true and provide:
+- clarificationQuestion: "Category 'X' not found. Did you mean 'Y'? Or create new?"
+- suggestedInterpretations: Array with options (use existing, create new)
+
 ## Output
 Valid PostgreSQL, performance-optimized, handle NULLs, use DISTINCT and ORDER BY`,
       },
