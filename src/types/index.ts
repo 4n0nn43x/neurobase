@@ -232,6 +232,12 @@ export interface LinguisticAgentOutput {
     columns: MissingColumnInfo[];
     reason: string;
   };
+  needsClarification?: boolean;
+  clarificationQuestion?: string;
+  suggestedInterpretations?: Array<{
+    description: string;
+    sql: string;
+  }>;
 }
 
 export interface OptimizerAgentInput {

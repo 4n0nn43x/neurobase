@@ -9,12 +9,10 @@ import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
 import Table from 'cli-table3';
+import * as fs from 'fs';
+import * as path from 'path';
 import { NeuroBase } from './core/neurobase';
 import { config } from './config';
-
-// Register command prompt with history support
-const CommandPrompt = require('inquirer-command-prompt');
-inquirer.registerPrompt('command', CommandPrompt);
 
 const program = new Command();
 
@@ -60,6 +58,98 @@ program.parse();
 // Conversation context to remember recent queries
 const conversationHistory: Array<{ query: string; sql?: string; timestamp: Date }> = [];
 
+// History file path
+const HISTORY_FILE = path.join(process.cwd(), '.neurobase', 'history.txt');
+const HISTORY_DIR = path.dirname(HISTORY_FILE);
+
+/**
+ * Load command history from file
+ */
+function loadHistory(): string[] {
+  try {
+    if (!fs.existsSync(HISTORY_DIR)) {
+      fs.mkdirSync(HISTORY_DIR, { recursive: true });
+    }
+    if (fs.existsSync(HISTORY_FILE)) {
+      const content = fs.readFileSync(HISTORY_FILE, 'utf-8');
+      // Return in chronological order (oldest first in file)
+      // Will be reversed when passed to readline
+      return content.split('\n').filter(line => line.trim());
+    }
+  } catch (error) {
+    // Ignore errors
+  }
+  return [];
+}
+
+/**
+ * Save command to history file
+ */
+function saveToHistory(command: string): void {
+  try {
+    if (!fs.existsSync(HISTORY_DIR)) {
+      fs.mkdirSync(HISTORY_DIR, { recursive: true });
+    }
+
+    // Load existing history
+    let history: string[] = [];
+    if (fs.existsSync(HISTORY_FILE)) {
+      const content = fs.readFileSync(HISTORY_FILE, 'utf-8');
+      history = content.split('\n').filter(line => line.trim());
+    }
+
+    // Remove duplicate if exists
+    history = history.filter(cmd => cmd !== command);
+
+    // Add new command at the end (most recent)
+    history.push(command);
+
+    // Keep only last 100 commands
+    if (history.length > 100) {
+      history = history.slice(-100);
+    }
+
+    // Save back to file
+    fs.writeFileSync(HISTORY_FILE, history.join('\n') + '\n', 'utf-8');
+  } catch (error) {
+    // Ignore errors
+  }
+}
+
+/**
+ * Create an inquirer-compatible history plugin
+ */
+class HistoryPrompt {
+  private history: string[];
+
+  constructor() {
+    this.history = loadHistory();
+  }
+
+  async prompt(): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const rl = require('readline').createInterface({
+        input: process.stdin,
+        output: process.stdout,
+        historySize: 100,
+      });
+
+      // Load history into readline
+      // readline expects: [most recent, ..., oldest]
+      // this.history is: [oldest, ..., most recent] from file
+      // So we need to reverse
+      (rl as any).history = [...this.history].reverse();
+
+      rl.question(chalk.green('NeuroBase> '), (answer: string) => {
+        rl.close();
+        resolve(answer);
+      });
+
+      rl.on('error', reject);
+    });
+  }
+}
+
 /**
  * Interactive mode
  */
@@ -78,27 +168,11 @@ async function runInteractiveMode(): Promise<void> {
     console.log(chalk.gray('\nType your questions in natural language.'));
     console.log(chalk.gray('Commands: .exit, .help, .schema, .stats, .clear\n'));
 
+    const historyPrompt = new HistoryPrompt();
     let continueSession = true;
 
     while (continueSession) {
-      const { query } = await inquirer.prompt([
-        {
-          type: 'command',
-          name: 'query',
-          message: chalk.green('NeuroBase>'),
-          prefix: '',
-          // Enable command history with arrow keys
-          history: {
-            save: true,
-            folder: './.neurobase',
-            limit: 100,
-            blacklist: ['.exit', '.clear']
-          },
-          // Autocomplete for special commands
-          autoCompletion: ['.exit', '.help', '.schema', '.stats', '.clear']
-        },
-      ]);
-
+      const query = await historyPrompt.prompt();
       const trimmedQuery = query.trim();
 
       if (!trimmedQuery) continue;
@@ -130,6 +204,24 @@ async function runInteractiveMode(): Promise<void> {
         console.clear();
         // Clear conversation context
         conversationHistory.length = 0;
+        // Clear history file
+        try {
+          if (fs.existsSync(HISTORY_FILE)) {
+            fs.unlinkSync(HISTORY_FILE);
+          }
+        } catch (error) {
+          // Ignore errors
+        }
+        console.log(chalk.gray('History cleared\n'));
+        continue;
+      }
+
+      // Save to history (except special commands)
+      saveToHistory(trimmedQuery);
+
+      // Check if it's a meta question (about what the user is asking, not a database query)
+      if (isMetaQuestion(trimmedQuery)) {
+        handleMetaQuestion(trimmedQuery, conversationHistory);
         continue;
       }
 
@@ -141,6 +233,73 @@ async function runInteractiveMode(): Promise<void> {
     console.error(chalk.red('\nError:'), error instanceof Error ? error.message : error);
     process.exit(1);
   }
+}
+
+/**
+ * Check if the query is a meta question (not a SQL query)
+ */
+function isMetaQuestion(query: string): boolean {
+  const lowerQuery = query.toLowerCase().trim();
+
+  // Greetings and conversational patterns
+  const greetingPatterns = [
+    /^(salut|bonjour|bonsoir|hello|hi|hey)[\s!?.]*/i,
+    /^comment (ça va|ca va|vas.tu|allez.vous)/i,
+    /^(how are you|how's it going)/i,
+  ];
+
+  // Help and guidance questions
+  const helpPatterns = [
+    /comment.*m'aider/i,
+    /comment.*aide/i,
+    /qu'est.ce que.*peux.*faire/i,
+    /what.*can.*do/i,
+    /how.*can.*help/i,
+    /peux.*m'aider/i,
+    /aide.moi/i,
+    /^help$/i,
+    /^aide$/i,
+  ];
+
+  // Meta questions about the conversation
+  const metaPatterns = [
+    /selon toi.*ce que je demande/i,
+    /qu'est.ce que.*je .*demand/i,
+    /tu .*compris.*\?/i,
+    /tu .*comprends.*\?/i,
+    /c'est quoi.*question/i,
+    /^pourquoi.*\?$/i,
+    /peux.*expliquer.*question/i,
+  ];
+
+  const allPatterns = [...greetingPatterns, ...helpPatterns, ...metaPatterns];
+  return allPatterns.some(pattern => pattern.test(lowerQuery));
+}
+
+/**
+ * Handle meta questions about what the user is asking
+ */
+function handleMetaQuestion(_query: string, conversationHistory: Array<{ query: string; sql?: string; timestamp: Date }>): void {
+  console.log(chalk.blue('\n💬 Question méta détectée\n'));
+
+  if (conversationHistory.length === 0) {
+    console.log(chalk.gray('Je n\'ai pas encore de contexte de conversation pour répondre à cette question.\n'));
+    return;
+  }
+
+  const recentQueries = conversationHistory.slice(-3);
+  console.log(chalk.cyan('Basé sur vos questions récentes, voici ce que je comprends :\n'));
+
+  recentQueries.forEach((entry, index) => {
+    console.log(chalk.gray(`${index + 1}. Question : "${entry.query}"`));
+    if (entry.sql) {
+      console.log(chalk.gray(`   SQL généré : ${entry.sql.substring(0, 80)}${entry.sql.length > 80 ? '...' : ''}\n`));
+    }
+  });
+
+  const lastQuery = recentQueries[recentQueries.length - 1];
+  console.log(chalk.green(`📝 Votre dernière question était : "${lastQuery.query}"`));
+  console.log(chalk.gray(`Ce qui a été interprété comme une requête pour obtenir des données de la base.\n`));
 }
 
 /**
@@ -171,6 +330,13 @@ async function executeQuery(
       schema: await (nb as any).schema.getSchema(),
       learningHistory: [],
     });
+
+    // Check if clarification is needed (ambiguous query)
+    if (linguisticResult.needsClarification && linguisticResult.clarificationQuestion) {
+      spinner.stop();
+      await handleClarificationNeeded(nb, query, linguisticResult, conversationHistory);
+      return;
+    }
 
     // Check if there are missing required columns
     if (linguisticResult.missingData) {
@@ -298,6 +464,115 @@ function displayQueryResults(result: any): void {
   // Show learning indicator
   if (result.learned) {
     console.log(chalk.green('✓ Learned from this interaction\n'));
+  }
+}
+
+/**
+ * Handle clarification needed for ambiguous queries
+ */
+async function handleClarificationNeeded(
+  nb: NeuroBase,
+  originalQuery: string,
+  linguisticResult: any,
+  conversationHistory: Array<{ query: string; sql?: string; timestamp: Date }>
+): Promise<void> {
+  console.log(chalk.yellow(`\n❓ ${linguisticResult.clarificationQuestion}\n`));
+
+  // Show suggested interpretations if available
+  if (linguisticResult.suggestedInterpretations && linguisticResult.suggestedInterpretations.length > 0) {
+    console.log(chalk.cyan('Possible interpretations:\n'));
+
+    const choices = linguisticResult.suggestedInterpretations.map((interp: any, index: number) => ({
+      name: `${index + 1}. ${interp.description}`,
+      value: index,
+    }));
+
+    // Add option to provide more context
+    choices.push({
+      name: chalk.gray('⚙️  I\'ll provide more details...'),
+      value: -1,
+    });
+
+    const { selectedIndex } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'selectedIndex',
+        message: 'Which interpretation is correct?',
+        choices,
+      },
+    ]);
+
+    if (selectedIndex === -1) {
+      // User wants to provide more details
+      console.log(chalk.cyan('\n💬 Please provide more details about what you want:\n'));
+      const { additionalContext } = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'additionalContext',
+          message: 'Additional details:',
+          validate: (input: string) => input.trim() !== '' || 'Please provide some details',
+        },
+      ]);
+
+      // Re-run the query with additional context
+      const enhancedQuery = `${originalQuery}. ${additionalContext}`;
+      console.log(chalk.gray(`\n📝 Enhanced query: "${enhancedQuery}"\n`));
+      await executeQuery(nb, enhancedQuery, conversationHistory);
+      return;
+    }
+
+    // User selected an interpretation
+    const selectedInterpretation = linguisticResult.suggestedInterpretations[selectedIndex];
+    console.log(chalk.green(`\n✓ Selected: ${selectedInterpretation.description}\n`));
+
+    // Execute the selected SQL
+    const spinner = ora('Executing query...').start();
+    try {
+      const db = (nb as any).db;
+      const startTime = Date.now();
+      const dbResult = await db.query(selectedInterpretation.sql);
+      const executionTime = Date.now() - startTime;
+
+      spinner.stop();
+
+      displayQueryResults({
+        data: dbResult.rows,
+        sql: selectedInterpretation.sql,
+        executionTime,
+        rowCount: dbResult.rowCount,
+        learned: false,
+      });
+
+      // Add to conversation history
+      conversationHistory.push({
+        query: originalQuery,
+        sql: selectedInterpretation.sql,
+        timestamp: new Date(),
+      });
+      if (conversationHistory.length > 10) {
+        conversationHistory.shift();
+      }
+    } catch (error) {
+      spinner.fail('Query failed');
+      console.error(
+        chalk.red('\n❌ Error:'),
+        error instanceof Error ? error.message : error
+      );
+    }
+  } else {
+    // No suggested interpretations, ask for clarification
+    console.log(chalk.cyan('\n💬 Please rephrase your question with more details:\n'));
+    const { clarifiedQuery } = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'clarifiedQuery',
+        message: 'Your clarified question:',
+        validate: (input: string) => input.trim() !== '' || 'Please provide a question',
+      },
+    ]);
+
+    // Re-execute with clarified query
+    await executeQuery(nb, clarifiedQuery, conversationHistory);
   }
 }
 
