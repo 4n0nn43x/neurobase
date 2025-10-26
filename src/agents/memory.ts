@@ -133,13 +133,15 @@ export class MemoryAgent implements Agent {
   private async retrieveSimilar(query: string): Promise<MemoryAgentOutput> {
     logger.debug({
       query: query.substring(0, 50),
-    }, 'Retrieving similar queries');
+    }, 'Retrieving similar queries using hybrid search (pgvector + BM25)');
 
     try {
       // Generate embedding for the query
       const queryEmbedding = await this.generateEmbedding(query);
 
-      // Use pgvector for efficient similarity search with cosine distance
+      // Hybrid Search using Reciprocal Rank Fusion (RRF)
+      // Combines semantic search (pgvector) + keyword search (BM25)
+      // This is a Tiger Data Agentic Postgres feature!
       const result = await this.db.query<{
         id: string;
         natural_language: string;
@@ -150,27 +152,61 @@ export class MemoryAgent implements Agent {
         corrected: boolean;
         embedding: string;
         context: string | null;
-        similarity: number;
+        combined_score: number;
+        vector_rank: number | null;
+        keyword_rank: number | null;
       }>(
         `
+        WITH vector_search AS (
+          -- Semantic search using pgvector
+          SELECT
+            id,
+            ROW_NUMBER() OVER (ORDER BY embedding <=> $1) AS rank
+          FROM neurobase_learning_history
+          WHERE success = true AND corrected = false AND embedding IS NOT NULL
+          ORDER BY embedding <=> $1
+          LIMIT 20
+        ),
+        keyword_search AS (
+          -- Keyword search using BM25 (Tiger Data pg_textsearch)
+          SELECT
+            id,
+            ROW_NUMBER() OVER (
+              ORDER BY natural_language <@> to_bm25query($2, 'idx_learning_history_bm25')
+            ) AS rank
+          FROM neurobase_learning_history
+          WHERE success = true AND corrected = false
+          ORDER BY natural_language <@> to_bm25query($2, 'idx_learning_history_bm25')
+          LIMIT 20
+        )
         SELECT
-          id,
-          natural_language,
-          sql,
-          user_id,
-          timestamp,
-          success,
-          corrected,
-          embedding::text,
-          context,
-          1 - (embedding <=> $1) as similarity
-        FROM neurobase_learning_history
-        WHERE success = true AND corrected = false AND embedding IS NOT NULL
-        ORDER BY embedding <=> $1
+          h.id,
+          h.natural_language,
+          h.sql,
+          h.user_id,
+          h.timestamp,
+          h.success,
+          h.corrected,
+          h.embedding::text,
+          h.context,
+          -- Reciprocal Rank Fusion (RRF) formula: combine both scores
+          COALESCE(1.0 / (60 + v.rank), 0.0) + COALESCE(1.0 / (60 + k.rank), 0.0) AS combined_score,
+          v.rank AS vector_rank,
+          k.rank AS keyword_rank
+        FROM neurobase_learning_history h
+        LEFT JOIN vector_search v ON h.id = v.id
+        LEFT JOIN keyword_search k ON h.id = k.id
+        WHERE v.id IS NOT NULL OR k.id IS NOT NULL
+        ORDER BY combined_score DESC
         LIMIT 5
       `,
-        [pgvector.toSql(queryEmbedding)]
+        [pgvector.toSql(queryEmbedding), query]
       );
+
+      logger.debug({
+        resultsCount: result.rows.length,
+        topScore: result.rows[0]?.combined_score,
+      }, 'Hybrid search completed');
 
       const relevantEntries = result.rows.map((row) => ({
         id: row.id,
@@ -184,11 +220,17 @@ export class MemoryAgent implements Agent {
         context: row.context ? JSON.parse(row.context) : undefined,
       }));
 
-      // Filter by similarity threshold (> 0.7)
+      // Filter by combined score threshold
+      // RRF scores typically range from 0 to ~0.03, so we use a lower threshold
       const similarQueries = relevantEntries.filter((_, idx) => {
-        const similarity = result.rows[idx].similarity;
-        return similarity > 0.7;
+        const score = result.rows[idx].combined_score;
+        return score > 0.015; // Threshold for RRF combined score
       });
+
+      logger.debug({
+        totalRelevant: relevantEntries.length,
+        similarCount: similarQueries.length,
+      }, 'Filtered results by RRF score');
 
       return {
         success: true,
@@ -196,7 +238,7 @@ export class MemoryAgent implements Agent {
         similarQueries,
       };
     } catch (error) {
-      logger.error({ error }, 'Failed to retrieve similar queries');
+      logger.error({ error }, 'Failed to retrieve similar queries with hybrid search');
       return { success: false };
     }
   }
@@ -398,10 +440,13 @@ export class MemoryAgent implements Agent {
     logger.debug('Initializing memory storage tables');
 
     await this.db.query(`
-      -- Enable pgvector extension
+      -- Enable pgvector extension for semantic search
       CREATE EXTENSION IF NOT EXISTS vector;
 
-      -- Learning history table with pgvector support
+      -- Enable pg_textsearch extension for BM25 keyword search (Tiger Data Agentic Postgres)
+      CREATE EXTENSION IF NOT EXISTS pg_textsearch;
+
+      -- Learning history table with hybrid search support (pgvector + BM25)
       CREATE TABLE IF NOT EXISTS neurobase_learning_history (
         id TEXT PRIMARY KEY,
         natural_language TEXT NOT NULL,
@@ -421,11 +466,17 @@ export class MemoryAgent implements Agent {
         ON neurobase_learning_history(user_id)
         WHERE user_id IS NOT NULL;
 
-      -- Create vector similarity index for fast semantic search
+      -- Create vector similarity index for fast semantic search (pgvector)
       CREATE INDEX IF NOT EXISTS idx_learning_history_embedding
         ON neurobase_learning_history
         USING ivfflat (embedding vector_cosine_ops)
         WITH (lists = 100);
+
+      -- Create BM25 index for keyword search (Tiger Data pg_textsearch)
+      CREATE INDEX IF NOT EXISTS idx_learning_history_bm25
+        ON neurobase_learning_history
+        USING bm25(natural_language)
+        WITH (text_config='english');
 
       CREATE TABLE IF NOT EXISTS neurobase_corrections (
         id TEXT PRIMARY KEY,
