@@ -219,12 +219,6 @@ async function runInteractiveMode(): Promise<void> {
       // Save to history (except special commands)
       saveToHistory(trimmedQuery);
 
-      // Check if it's a meta question (about what the user is asking, not a database query)
-      if (isMetaQuestion(trimmedQuery)) {
-        handleMetaQuestion(trimmedQuery, conversationHistory);
-        continue;
-      }
-
       // Execute query with conversation context
       await executeQuery(nb, trimmedQuery, conversationHistory);
     }
@@ -233,73 +227,6 @@ async function runInteractiveMode(): Promise<void> {
     console.error(chalk.red('\nError:'), error instanceof Error ? error.message : error);
     process.exit(1);
   }
-}
-
-/**
- * Check if the query is a meta question (not a SQL query)
- */
-function isMetaQuestion(query: string): boolean {
-  const lowerQuery = query.toLowerCase().trim();
-
-  // Greetings and conversational patterns
-  const greetingPatterns = [
-    /^(salut|bonjour|bonsoir|hello|hi|hey)[\s!?.]*/i,
-    /^comment (ça va|ca va|vas.tu|allez.vous)/i,
-    /^(how are you|how's it going)/i,
-  ];
-
-  // Help and guidance questions
-  const helpPatterns = [
-    /comment.*m'aider/i,
-    /comment.*aide/i,
-    /qu'est.ce que.*peux.*faire/i,
-    /what.*can.*do/i,
-    /how.*can.*help/i,
-    /peux.*m'aider/i,
-    /aide.moi/i,
-    /^help$/i,
-    /^aide$/i,
-  ];
-
-  // Meta questions about the conversation
-  const metaPatterns = [
-    /selon toi.*ce que je demande/i,
-    /qu'est.ce que.*je .*demand/i,
-    /tu .*compris.*\?/i,
-    /tu .*comprends.*\?/i,
-    /c'est quoi.*question/i,
-    /^pourquoi.*\?$/i,
-    /peux.*expliquer.*question/i,
-  ];
-
-  const allPatterns = [...greetingPatterns, ...helpPatterns, ...metaPatterns];
-  return allPatterns.some(pattern => pattern.test(lowerQuery));
-}
-
-/**
- * Handle meta questions about what the user is asking
- */
-function handleMetaQuestion(_query: string, conversationHistory: Array<{ query: string; sql?: string; timestamp: Date }>): void {
-  console.log(chalk.blue('\n💬 Question méta détectée\n'));
-
-  if (conversationHistory.length === 0) {
-    console.log(chalk.gray('Je n\'ai pas encore de contexte de conversation pour répondre à cette question.\n'));
-    return;
-  }
-
-  const recentQueries = conversationHistory.slice(-3);
-  console.log(chalk.cyan('Basé sur vos questions récentes, voici ce que je comprends :\n'));
-
-  recentQueries.forEach((entry, index) => {
-    console.log(chalk.gray(`${index + 1}. Question : "${entry.query}"`));
-    if (entry.sql) {
-      console.log(chalk.gray(`   SQL généré : ${entry.sql.substring(0, 80)}${entry.sql.length > 80 ? '...' : ''}\n`));
-    }
-  });
-
-  const lastQuery = recentQueries[recentQueries.length - 1];
-  console.log(chalk.green(`📝 Votre dernière question était : "${lastQuery.query}"`));
-  console.log(chalk.gray(`Ce qui a été interprété comme une requête pour obtenir des données de la base.\n`));
 }
 
 /**
@@ -330,6 +257,23 @@ async function executeQuery(
       schema: await (nb as any).schema.getSchema(),
       learningHistory: [],
     });
+
+    // Check if AI detected conversational input (not a SQL query)
+    if (linguisticResult.isConversational && linguisticResult.conversationalResponse) {
+      spinner.stop();
+      console.log(chalk.cyan(`\n${linguisticResult.conversationalResponse}\n`));
+
+      // Add to conversation history as conversational
+      conversationHistory.push({
+        query,
+        sql: undefined,
+        timestamp: new Date()
+      });
+      if (conversationHistory.length > 10) {
+        conversationHistory.shift();
+      }
+      return;
+    }
 
     // Check if clarification is needed (ambiguous query)
     if (linguisticResult.needsClarification && linguisticResult.clarificationQuestion) {

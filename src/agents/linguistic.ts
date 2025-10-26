@@ -61,6 +61,11 @@ export class LinguisticAgent implements Agent {
         clarificationNeeded: result.confidence < 0.6 ? this.getClarificationQuestion(query.text) : undefined,
         alternatives: result.alternatives,
         missingData,
+        isConversational: result.isConversational,
+        conversationalResponse: result.conversationalResponse,
+        needsClarification: result.needsClarification,
+        clarificationQuestion: result.clarificationQuestion,
+        suggestedInterpretations: result.suggestedInterpretations,
       };
     } catch (error) {
       logger.error({ error }, 'Failed to generate SQL');
@@ -81,6 +86,11 @@ export class LinguisticAgent implements Agent {
     confidence: number;
     explanation: string;
     alternatives?: string[];
+    isConversational?: boolean;
+    conversationalResponse?: string;
+    needsClarification?: boolean;
+    clarificationQuestion?: string;
+    suggestedInterpretations?: Array<{ description: string; sql: string }>;
   }> {
     // Check if LLM provider has generateSQL method
     if ('generateSQL' in this.llm && typeof this.llm.generateSQL === 'function') {
@@ -91,62 +101,47 @@ export class LinguisticAgent implements Agent {
     const messages = [
       {
         role: 'system' as const,
-        content: `You are an elite PostgreSQL expert with deep natural language understanding capabilities. Transform human queries into precise, optimized SQL while maintaining contextual awareness.
+        content: `You are an elite PostgreSQL expert with deep natural language understanding. You intelligently handle both conversational interactions and SQL query generation.
 
 # DATABASE SCHEMA
 ${schema}
 
-${examples ? `# PROVEN SUCCESSFUL EXAMPLES\n${examples}\n` : ''}
+${examples ? `# SUCCESSFUL EXAMPLES\n${examples}\n` : ''}
 
 ${conversationContext ? `# CONVERSATION HISTORY\n${conversationContext}\n\n` : ''}
 
-# SQL GENERATION GUIDELINES
+# CORE CAPABILITY: Conversation vs SQL Detection
+
+## CONVERSATIONAL inputs (respond naturally, NO SQL):
+- Greetings: "hello", "hi", "bonjour", "salut"
+- Help: "what can you do?", "comment tu peux m'aider?", "que peux tu faire?"
+- Meta: "what did I ask?", "selon toi qu'est-ce que je demande?"
+
+Response format for conversational:
+{ "isConversational": true, "conversationalResponse": "helpful response", "sql": "", "confidence": 1.0 }
+
+## SQL QUERY inputs:
+- Data: "show products", "list users", "combien d'utilisateurs?"
+- Aggregations: "count orders", "sum sales"
+- Metadata: "what tables?", "quelles tables?"
+
+# SQL GENERATION GUIDELINES (when isConversational=false)
 
 ## Metadata Queries
-When users ask about database structure (not data), query system catalogs:
-- "show all tables" / "quelles sont les tables" / "quel sont toutes les tables" → SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
-- "list tables" → Same as above
-- "show columns" → Query information_schema.columns
-
-## Column Reference Intelligence
-When users explicitly name columns, they want VALUES:
-- "what are parent_id values?" / "quels sont les parent_id?" → SELECT DISTINCT parent_id FROM table ORDER BY parent_id
-- "show me prices" / "montre les prix" → SELECT DISTINCT price FROM products ORDER BY price
-
-When users ask conceptually (no column name):
-- "show parent categories" / "montre les parents" → SELECT * FROM categories WHERE parent_id IS NULL
-
-## Contextual Understanding (CRITICAL)
-Vague follow-up queries reference the previous conversation:
-- "I want the values" / "je veux les valeurs" → Enhance previous query with aggregation
-- "with description" / "avec la description" → JOIN to related table for description field
-- "and their names" / "et leurs noms" → Add name column via JOIN
+- "show tables" / "quelles tables" → SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
 
 ## Multi-Language Support
-Handle English, French, and mixed queries equally:
-- French: "quels", "montre", "avec", "leurs"
-- English: "what", "show", "with", "their"
-- Mixed: Valid and expected
+Handle English, French, mixed queries equally.
 
-## Output Requirements
-- Valid PostgreSQL syntax (version 12+)
-- Performance-optimized (proper JOINs, indexes considered)
-- Handle NULLs appropriately
-- Use DISTINCT when showing unique values
-- Add ORDER BY for better UX
+## Ambiguity Handling
+When ambiguous: needsClarification=true, provide clarificationQuestion and suggestedInterpretations
 
-## Conversational Clarification (CRITICAL)
-When query is ambiguous or vague, ASK instead of guessing:
-- Set needsClarification: true
-- Provide clarificationQuestion asking what user means
-- Offer 2-4 suggestedInterpretations with SQL examples
-
-When CLEAR: confidence 0.7+, needsClarification=false
-When AMBIGUOUS: confidence <0.7, needsClarification=true, include clarificationQuestion and suggestedInterpretations array`,
+## Output
+Valid PostgreSQL, performance-optimized, handle NULLs, use DISTINCT and ORDER BY`,
       },
       {
         role: 'user' as const,
-        content: `Query: "${query}"\n\nGenerate PostgreSQL query.`,
+        content: `User input: "${query}"\n\nAnalyze and respond.`,
       },
     ];
 
@@ -157,10 +152,15 @@ When AMBIGUOUS: confidence <0.7, needsClarification=true, include clarificationQ
       if (jsonMatch) {
         const result = JSON.parse(jsonMatch[0]);
         return {
-          sql: result.sql,
+          sql: result.sql || '',
           confidence: result.confidence || 0.7,
           explanation: result.explanation || '',
           alternatives: result.alternatives,
+          isConversational: result.isConversational || false,
+          conversationalResponse: result.conversationalResponse,
+          needsClarification: result.needsClarification || false,
+          clarificationQuestion: result.clarificationQuestion,
+          suggestedInterpretations: result.suggestedInterpretations,
         };
       }
     } catch (e) {
@@ -171,6 +171,7 @@ When AMBIGUOUS: confidence <0.7, needsClarification=true, include clarificationQ
           sql: sqlMatch[0],
           confidence: 0.5,
           explanation: 'Extracted from response',
+          isConversational: false,
         };
       }
     }

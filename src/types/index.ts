@@ -238,6 +238,8 @@ export interface LinguisticAgentOutput {
     description: string;
     sql: string;
   }>;
+  isConversational?: boolean;
+  conversationalResponse?: string;
 }
 
 export interface OptimizerAgentInput {

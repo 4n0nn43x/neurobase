@@ -67,7 +67,16 @@ export class OpenAIProvider extends BaseLLMProvider {
     schema: string,
     examples?: string,
     conversationContext?: string
-  ): Promise<{ sql: string; explanation: string; confidence: number }> {
+  ): Promise<{
+    sql: string;
+    explanation: string;
+    confidence: number;
+    isConversational?: boolean;
+    conversationalResponse?: string;
+    needsClarification?: boolean;
+    clarificationQuestion?: string;
+    suggestedInterpretations?: Array<{ description: string; sql: string }>;
+  }> {
     const messages = this.createSQLPrompt(query, schema, examples, conversationContext);
     const response = await this.generateCompletion(messages, {
       temperature: 0.1,
@@ -76,9 +85,14 @@ export class OpenAIProvider extends BaseLLMProvider {
     try {
       const result = this.extractJSON(response.content);
       return {
-        sql: result.sql,
+        sql: result.sql || '',
         explanation: result.explanation || '',
         confidence: result.confidence || 0.8,
+        isConversational: result.isConversational || false,
+        conversationalResponse: result.conversationalResponse,
+        needsClarification: result.needsClarification || false,
+        clarificationQuestion: result.clarificationQuestion,
+        suggestedInterpretations: result.suggestedInterpretations,
       };
     } catch (error) {
       // Fallback: try to extract SQL from response
@@ -88,6 +102,7 @@ export class OpenAIProvider extends BaseLLMProvider {
           sql: sqlMatch[0],
           explanation: 'Extracted from response',
           confidence: 0.6,
+          isConversational: false,
         };
       }
       throw new Error(`Failed to parse SQL from response: ${error}`);
