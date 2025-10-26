@@ -114,13 +114,8 @@ cp .env.example .env
 Edit `.env` with your credentials:
 
 ```env
-# Tiger Data
-TIGER_SERVICE_ID=your-service-id
-TIGER_DB_HOST=your-host.tigerdata.cloud
-TIGER_DB_PORT=5432
-TIGER_DB_NAME=tsdb
-TIGER_DB_USER=postgres
-TIGER_DB_PASSWORD=your-password
+# Database Configuration
+DATABASE_URL=postgresql://tsdbadmin:your-password@your-service.tsdb.cloud.timescale.com:5432/tsdb?sslmode=require
 
 # LLM Provider
 LLM_PROVIDER=openai
@@ -202,12 +197,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - TIGER_SERVICE_ID=${TIGER_SERVICE_ID}
-      - TIGER_DB_HOST=${TIGER_DB_HOST}
-      - TIGER_DB_PORT=${TIGER_DB_PORT}
-      - TIGER_DB_NAME=${TIGER_DB_NAME}
-      - TIGER_DB_USER=${TIGER_DB_USER}
-      - TIGER_DB_PASSWORD=${TIGER_DB_PASSWORD}
+      - DATABASE_URL=${DATABASE_URL}
       - LLM_PROVIDER=${LLM_PROVIDER}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     restart: unless-stopped
@@ -230,7 +220,7 @@ heroku login
 heroku create neurobase-app
 
 # Set environment variables
-heroku config:set TIGER_SERVICE_ID=your-service-id
+heroku config:set DATABASE_URL=postgresql://user:pass@host:5432/db?sslmode=require
 heroku config:set OPENAI_API_KEY=sk-...
 
 # Deploy
@@ -305,12 +295,7 @@ pm2 startup
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `TIGER_SERVICE_ID` | Tiger Cloud service ID | `abc123...` |
-| `TIGER_DB_HOST` | Database hostname | `xyz.tigerdata.cloud` |
-| `TIGER_DB_PORT` | Database port | `5432` |
-| `TIGER_DB_NAME` | Database name | `tsdb` |
-| `TIGER_DB_USER` | Database user | `postgres` |
-| `TIGER_DB_PASSWORD` | Database password | `yourpassword` |
+| `DATABASE_URL` | PostgreSQL/TimescaleDB connection string | `postgresql://user:pass@host:5432/db?sslmode=require` |
 | `LLM_PROVIDER` | LLM provider | `openai` |
 | `OPENAI_API_KEY` | OpenAI API key | `sk-...` |
 

@@ -11,12 +11,7 @@ export interface Config {
 }
 
 export interface TigerConfig {
-  serviceId: string;
-  host: string;
-  port: number;
-  database: string;
-  user: string;
-  password: string;
+  connectionString: string;
 }
 
 export interface LLMConfig {

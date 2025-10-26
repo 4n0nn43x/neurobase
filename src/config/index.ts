@@ -35,12 +35,7 @@ export function loadConfig(): Config {
 
   const config: Config = {
     tiger: {
-      serviceId: getEnvVar('TIGER_SERVICE_ID'),
-      host: getEnvVar('TIGER_DB_HOST'),
-      port: getEnvVarNumber('TIGER_DB_PORT', 5432),
-      database: getEnvVar('TIGER_DB_NAME'),
-      user: getEnvVar('TIGER_DB_USER', 'postgres'),
-      password: getEnvVar('TIGER_DB_PASSWORD'),
+      connectionString: getEnvVar('DATABASE_URL'),
     },
     llm: {
       provider: llmProvider,

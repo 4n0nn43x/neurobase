@@ -206,13 +206,8 @@ vim .env
 Update with your credentials:
 
 ```env
-# Tiger Data (from Step 2)
-TIGER_SERVICE_ID=abc123xyz
-TIGER_DB_HOST=xyz123.tigerdata.cloud
-TIGER_DB_PORT=5432
-TIGER_DB_NAME=tsdb
-TIGER_DB_USER=postgres
-TIGER_DB_PASSWORD=your-secure-password
+# Database Configuration (from Step 2)
+DATABASE_URL=postgresql://tsdbadmin:your-password@your-service.tsdb.cloud.timescale.com:5432/tsdb?sslmode=require
 
 # LLM Provider (choose one)
 LLM_PROVIDER=openai

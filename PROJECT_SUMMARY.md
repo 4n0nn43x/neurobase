@@ -288,10 +288,8 @@ npm run format        # Code formatting
 ### Environment Variables
 
 ```env
-# Tiger Cloud
-TIGER_SERVICE_ID=your-service-id
-TIGER_DB_HOST=your-host.tigerdata.cloud
-TIGER_DB_PASSWORD=your-password
+# Database Configuration
+DATABASE_URL=postgresql://tsdbadmin:your-password@your-service.tsdb.cloud.timescale.com:5432/tsdb?sslmode=require
 
 # LLM Provider
 LLM_PROVIDER=openai

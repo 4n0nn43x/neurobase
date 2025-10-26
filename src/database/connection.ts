@@ -13,11 +13,7 @@ export class DatabaseConnection {
   constructor(config: TigerConfig) {
     this.config = config;
     this.pool = new Pool({
-      host: config.host,
-      port: config.port,
-      database: config.database,
-      user: config.user,
-      password: config.password,
+      connectionString: config.connectionString,
       max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,

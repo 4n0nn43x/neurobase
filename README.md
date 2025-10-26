@@ -136,8 +136,8 @@ cp .env.example .env
 Edit `.env` with your credentials:
 
 ```env
-# Tiger Data Configuration
-TIGER_SERVICE_ID=your-service-id
+# Database Configuration
+DATABASE_URL=postgresql://tsdbadmin:your-password@your-service.tsdb.cloud.timescale.com:5432/tsdb?sslmode=require
 
 # LLM Provider (choose one or more)
 LLM_PROVIDER=openai  # Options: openai, anthropic, ollama

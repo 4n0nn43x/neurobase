@@ -34,7 +34,7 @@ tiger auth login
 tiger service create --name my-neurobase
 
 # Get connection details (save these!)
-tiger db connection-string
+tiger db connection-string <your service ID>
 ```
 
 ---
@@ -91,13 +91,8 @@ cp .env.example .env
 Edit `.env`:
 
 ```env
-# Tiger Data (from Step 1)
-TIGER_SERVICE_ID=your-service-id
-TIGER_DB_HOST=your-host.tigerdata.cloud
-TIGER_DB_PORT=5432
-TIGER_DB_NAME=tsdb
-TIGER_DB_USER=postgres
-TIGER_DB_PASSWORD=your-password
+# Database Configuration (from Step 1)
+DATABASE_URL=postgresql://tsdbadmin:your-password@your-service.tsdb.cloud.timescale.com:5432/tsdb?sslmode=require
 
 # LLM Provider (from Step 2)
 LLM_PROVIDER=openai
