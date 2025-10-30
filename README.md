@@ -1,8 +1,8 @@
 # NeuroBase 🧠
 
-**An intelligent, self-learning conversational database built on Agentic Postgres**
+**An intelligent, self-learning conversational database system**
 
-NeuroBase transforms PostgreSQL into a cognitive system that understands natural language, automatically optimizes queries, and learns from every interaction. Built for the [Tiger Data Agentic Postgres Challenge](https://dev.to/devteam/join-the-agentic-postgres-challenge-with-tiger-data-3000-in-prizes-17ip).
+NeuroBase transforms PostgreSQL into a cognitive system that understands natural language, automatically optimizes queries, and learns from every interaction through autonomous AI agents.
 
 ---
 
@@ -10,20 +10,21 @@ NeuroBase transforms PostgreSQL into a cognitive system that understands natural
 
 > "You don't speak SQL to your database anymore. Your database understands you and becomes smarter with every question."
 
-NeuroBase is not just a natural language interface to SQL—it's a **learning database system** that:
+NeuroBase is a **learning database system** featuring:
 
-- 🗣️ **Understands natural language queries** in plain English
-- ⚡ **Generates optimized SQL** automatically
-- 🧠 **Learns from corrections** and improves over time
-- 🔍 **Optimizes performance** by analyzing query execution
-- 💾 **Remembers context** across conversations
-- 🤖 **Supports multiple LLM providers** (OpenAI, Anthropic, Ollama)
+- 🗣️ **Natural language queries** - Ask questions in plain English
+- ⚡ **Automatic SQL generation** - Context-aware translation
+- 🧠 **Continuous learning** - Improves from corrections
+- 🤖 **Multi-agent architecture** - Specialized AI agents on isolated forks
+- 🔍 **Query optimization** - Automatic performance tuning
+- 💾 **Context retention** - Remembers conversation history
+- 🔄 **Zero-copy forks** - Safe testing environment for agents
 
 ---
 
 ## 🏗️ Architecture
 
-NeuroBase uses a **multi-agent architecture** powered by Tiger Data's MCP (Model Context Protocol):
+### Core System
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -43,176 +44,168 @@ NeuroBase uses a **multi-agent architecture** powered by Tiger Data's MCP (Model
 └────────────────────────────┼───────────────────────────┘
                              │
                     ┌────────▼────────┐
-                    │  Agentic        │
-                    │  Postgres       │
+                    │   PostgreSQL    │
                     │  (Tiger Cloud)  │
                     └─────────────────┘
 ```
 
-### Agents
+### Multi-Agent System
 
-#### 1. **Linguistic Agent** 🗣️
-- Translates natural language to SQL
-- Uses schema introspection to understand table structures
-- Supports multiple LLM backends (OpenAI GPT-4, Claude, Ollama)
-- Handles ambiguous queries with clarifying questions
+```
+Multi-Agent Orchestrator (Main DB)
+├── Agent Registry & Task Queue
+├── Event System & Monitoring
+└── Inter-Agent Communication
 
-#### 2. **Optimizer Agent** ⚡
-- Analyzes query execution plans (`EXPLAIN ANALYZE`)
-- Suggests and applies index optimizations
-- Rewrites queries for better performance
-- Monitors query execution times
+Specialized Agents (Each on Fork)
+├── Schema Evolution Agent → Optimizes database structure
+├── Query Validator Agent → Validates before execution
+├── Learning Aggregator Agent → Synthesizes insights
+└── A/B Testing Agent → Tests strategies in parallel
 
-#### 3. **Memory Agent** 🧠
-- Stores interaction history (NL query ↔ SQL mapping)
-- Creates embeddings for semantic search
-- Learns from user corrections
-- Builds contextual understanding over time
+Fork Synchronizer
+└── Shares knowledge across agents
+```
 
 ---
 
-## 🚀 Features
+## ✨ Features
 
 ### Core Capabilities
 
-- ✅ **Natural Language Queries**: Ask questions in plain English
-- ✅ **Multi-LLM Support**: OpenAI, Anthropic Claude, and Ollama (local models)
-- ✅ **Automatic SQL Generation**: Context-aware SQL from natural language
-- ✅ **Query Optimization**: Automatic performance tuning
-- ✅ **Learning System**: Improves accuracy with each interaction
-- ✅ **Schema Awareness**: Understands your database structure
-- ✅ **Context Retention**: Remembers previous queries in conversation
-- ✅ **Transparent Mode**: Shows generated SQL and execution plans
-- ✅ **Error Recovery**: Learns from mistakes and corrections
+- ✅ **Natural Language Interface** - SQL-free queries
+- ✅ **Multi-LLM Support** - OpenAI, Anthropic Claude, Ollama
+- ✅ **Automatic SQL Generation** - Intelligent translation
+- ✅ **Query Optimization** - Performance analysis and tuning
+- ✅ **Learning System** - Improves with each interaction
+- ✅ **Schema Awareness** - Understands database structure
+- ✅ **Context Memory** - Conversational interface
+- ✅ **Transparent Mode** - Shows generated SQL
+
+### Multi-Agent Features
+
+- 🤖 **Schema Evolution** - Analyzes patterns, recommends optimizations
+- ✅ **Query Validation** - Safety checks before execution
+- 🧠 **Learning Aggregation** - Cross-agent insights
+- 🧪 **A/B Testing** - Parallel strategy comparison
+- 🔄 **Fork Synchronization** - Knowledge sharing
+- 📊 **Real-Time Dashboard** - Web-based monitoring
+- 🎯 **Event System** - Activity tracking
 
 ### Advanced Features
 
-- 🔄 **Adaptive Schema Evolution**: Suggests materialized views for common queries
-- 📊 **Performance Analytics**: Tracks and visualizes query performance
-- 🔐 **Safe Execution**: Read-only mode for production databases
-- 🎯 **Intent Recognition**: Understands user goals beyond literal queries
-- 📝 **Interaction History**: Full audit trail of all conversations
-- 🧬 **Provider-Independent Embeddings**: Uses local Transformers.js model for semantic search, works with any LLM (OpenAI, Claude, Ollama)
-- 🚀 **pgvector Integration**: Native PostgreSQL vector search with IVFFlat indexing
+- 🔄 **Zero-Copy Forks** - Instant isolated environments
+- 📊 **Performance Analytics** - Query tracking
+- 🔐 **Safe Execution** - Read-only mode
+- 🎯 **Intent Recognition** - Goal understanding
+- 📝 **Audit Trail** - Complete history
+- 🧬 **Local Embeddings** - Privacy-focused semantic search
+- 🚀 **pgvector Integration** - Native vector search
 
 ---
 
-## 📋 Prerequisites
+## 🚀 Quick Start
 
-- **Node.js** 18+ or **Python** 3.10+
-- **Tiger Data Account** (free tier available)
-- **Tiger CLI** installed
+### Prerequisites
+
+- **Node.js** 18+
+- **PostgreSQL** database (Tiger Cloud recommended)
+- **Tiger CLI** (for fork management)
 - At least one LLM provider:
   - OpenAI API key, OR
   - Anthropic API key, OR
   - Ollama running locally
 
----
-
-## 🔧 Installation
-
-### 1. Install Tiger CLI
+### Installation
 
 ```bash
-curl -fsSL https://cli.tigerdata.com | sh
-tiger auth login
-```
-
-### 2. Clone and Install NeuroBase
-
-```bash
+# Clone repository
 git clone https://github.com/4n0nn43x/neurobase.git
 cd neurobase
+
+# Install dependencies
 npm install
-# or for Python: pip install -r requirements.txt
-```
 
-### 3. Configure Environment
-
-```bash
+# Configure environment
 cp .env.example .env
+# Edit .env with your credentials
+
+# Initialize database
+npm run init
 ```
 
-Edit `.env` with your credentials:
+### Configuration
+
+Edit `.env`:
 
 ```env
-# Database Configuration
-DATABASE_URL=postgresql://tsdbadmin:your-password@your-service.tsdb.cloud.timescale.com:5432/tsdb?sslmode=require
+# Database
+DATABASE_URL=postgresql://user:pass@host:5432/db?sslmode=require
 
-# LLM Provider (choose one or more)
+# LLM Provider
 LLM_PROVIDER=openai  # Options: openai, anthropic, ollama
 
-# OpenAI Configuration
+# OpenAI
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4-turbo-preview
 
-# Anthropic Configuration
+# Anthropic
 ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
 
-# Ollama Configuration (local)
+# Ollama (local)
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.2
 
-# NeuroBase Configuration
-NEUROBASE_MODE=interactive  # interactive, api, readonly
-NEUROBASE_LOG_LEVEL=info
-ENABLE_LEARNING=true
-ENABLE_OPTIMIZATION=true
+# Multi-Agent
+ENABLE_MULTI_AGENT=true
 ```
 
-### 4. Initialize Database
+### Run
 
 ```bash
-npm run init
-# This creates the necessary tables for memory/learning
+# Interactive CLI
+npm start
+
+# API Server
+npm run serve
+
+# Multi-Agent API with Dashboard
+npm run serve:multi-agent
+
+# Development mode
+npm run dev
+npm run dev:multi-agent
 ```
 
 ---
 
-## 🎮 Usage
+## 💻 Usage
 
-### Interactive CLI Mode
+### CLI Mode
 
 ```bash
 npm start
 ```
 
-Example conversation:
-
 ```
-NeuroBase> Show me the top 5 customers by total purchases this month
+NeuroBase> Show me users who signed up today
 
 🧠 Analyzing query...
 📝 Generated SQL:
-   SELECT c.name, SUM(o.total) as total_purchases
-   FROM customers c
-   JOIN orders o ON c.id = o.customer_id
-   WHERE o.order_date >= date_trunc('month', current_date)
-   GROUP BY c.name
-   ORDER BY total_purchases DESC
-   LIMIT 5;
+   SELECT * FROM users
+   WHERE created_at::date = CURRENT_DATE;
 
-⚡ Execution time: 45ms
+⚡ Execution time: 23ms
 
-┌──────────────┬─────────────────┐
-│ name         │ total_purchases │
-├──────────────┼─────────────────┤
-│ John Smith   │ $5,240.00       │
-│ Alice Brown  │ $4,890.00       │
-│ Bob Johnson  │ $3,750.00       │
-│ Carol White  │ $3,200.00       │
-│ David Lee    │ $2,980.00       │
-└──────────────┴─────────────────┘
+┌────┬─────────────┬──────────────────┬─────────────────────┐
+│ id │ name        │ email            │ created_at          │
+├────┼─────────────┼──────────────────┼─────────────────────┤
+│ 42 │ John Smith  │ john@example.com │ 2025-10-31 10:15:00 │
+│ 43 │ Jane Doe    │ jane@example.com │ 2025-10-31 14:30:00 │
+└────┴─────────────┴──────────────────┴─────────────────────┘
 
-💡 Learned: "top N by total purchases" → SUM() + GROUP BY + ORDER BY + LIMIT
-
-NeuroBase> What about last month?
-
-🧠 Using context from previous query...
-📝 Generated SQL:
-   [Same query with adjusted date range]
-...
+💡 Learned: "users who signed up today" → created_at::date = CURRENT_DATE
 ```
 
 ### API Mode
@@ -222,143 +215,199 @@ npm run serve
 ```
 
 ```javascript
-// Query the API
+// Query endpoint
 const response = await fetch('http://localhost:3000/api/query', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    query: "Show me products that are running low on stock",
-    userId: "user123",
+    query: "Show me top 10 products by revenue",
     includeExplanation: true
   })
 });
 
 const result = await response.json();
 console.log(result.data);
+console.log(result.sql);
 ```
 
-### Programmatic Usage
+### Multi-Agent Mode
+
+```bash
+npm run serve:multi-agent
+```
+
+Access dashboard: `http://localhost:3000/dashboard`
 
 ```javascript
+// Register agent
+await fetch('http://localhost:3000/api/agents/register', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    name: 'Schema Evolution Agent',
+    type: 'schema-evolution',
+    enabled: true,
+    forkStrategy: 'now'
+  })
+});
+```
+
+### Programmatic
+
+```typescript
 import { NeuroBase } from 'neurobase';
 
 const nb = new NeuroBase({
   provider: 'openai',
-  serviceId: 'your-service-id',
-  enableLearning: true
+  connectionString: process.env.DATABASE_URL
 });
 
+await nb.initialize();
+
 const result = await nb.query(
-  "Which products had the highest sales growth last quarter?"
+  "Which products had highest sales last quarter?"
 );
 
 console.log(result.data);
 console.log(result.sql);
-console.log(result.explanation);
 ```
+
+---
+
+## 🤖 Multi-Agent System
+
+### Specialized Agents
+
+#### Schema Evolution Agent
+Analyzes query patterns and recommends database optimizations.
+
+```typescript
+import { SchemaEvolutionAgent } from 'neurobase/agents';
+
+const agent = new SchemaEvolutionAgent(pool, llmProvider);
+const analysis = await agent.analyzeAndRecommend();
+
+// Test recommendations on fork
+for (const rec of analysis.recommendations) {
+  const result = await agent.testRecommendation(rec);
+  if (result.performanceGain > 30) {
+    await agent.applyRecommendation(rec, mainPool);
+  }
+}
+```
+
+#### Query Validator Agent
+Validates queries for safety and performance before execution.
+
+```typescript
+import { QueryValidatorAgent } from 'neurobase/agents';
+
+const validator = new QueryValidatorAgent(pool);
+const validation = await validator.validateQuery(sql);
+
+if (!validation.isSafe) {
+  throw new Error(`Unsafe query: ${validation.errors}`);
+}
+```
+
+#### Learning Aggregator Agent
+Synthesizes insights from all agents.
+
+```typescript
+import { LearningAggregatorAgent } from 'neurobase/agents';
+
+const aggregator = new LearningAggregatorAgent(pool);
+const insights = await aggregator.aggregateAndSynthesize();
+
+// Get actionable high-impact insights
+const important = await aggregator.getInsights({
+  actionable: true,
+  impact: 'high'
+});
+```
+
+#### A/B Testing Agent
+Tests multiple strategies in parallel.
+
+```typescript
+import { ABTestingAgent } from 'neurobase/agents';
+
+const experiment = await abTesting.createExperiment(
+  "SQL Strategies",
+  "Compare approaches",
+  [strategyA, strategyB, strategyC]
+);
+
+await abTesting.startExperiment(experiment.id);
+const results = await abTesting.analyzeResults(experiment.id);
+console.log(`Winner: ${results.winner}`);
+```
+
+### Orchestrator
+
+```typescript
+import { MultiAgentOrchestrator } from 'neurobase/orchestrator';
+
+const orchestrator = new MultiAgentOrchestrator(DATABASE_URL);
+await orchestrator.initialize();
+
+// Register and start agent
+const agent = await orchestrator.registerAgent({
+  name: 'My Agent',
+  type: 'schema-evolution',
+  enabled: true,
+  forkStrategy: 'now',
+  autoStart: true
+});
+
+// Submit task
+const taskId = await orchestrator.submitTask(
+  agent.id,
+  'analyze',
+  { timeframe: '7 days' }
+);
+```
+
+---
+
+## 📊 Monitoring Dashboard
+
+Access at `http://localhost:3000/dashboard`
+
+Features:
+- 📈 Real-time system metrics
+- 🤖 Agent status and performance
+- 🔄 Synchronization statistics
+- 📝 Live event stream
+- ⚡ Performance analytics
+- 🎯 Auto-refresh (10 seconds)
+
+---
+
+## 📚 Documentation
+
+- **[Architecture Guide](docs/architecture.md)** - System design and components
+- **[API Reference](docs/api-reference.md)** - Complete API documentation
+- **[Multi-Agent System](docs/multi-agent-system.md)** - Agent details and usage
+- **[Quick Start](docs/quickstart.md)** - Get started in 5 minutes
+- **[Installation](docs/installation.md)** - Detailed setup guide
 
 ---
 
 ## 🧪 Examples
 
-### Example 1: Simple Query
+See `examples/` directory:
+- `multi-agent-demo.ts` - Complete multi-agent demo
+- More examples coming soon
 
-```
-User: "How many users signed up today?"
-
-NeuroBase generates:
-SELECT COUNT(*) FROM users
-WHERE created_at::date = CURRENT_DATE;
-```
-
-### Example 2: Complex Aggregation
-
-```
-User: "Show me average order value by product category for the last 6 months"
-
-NeuroBase generates:
-SELECT
-  pc.name AS category,
-  AVG(oi.price * oi.quantity) AS avg_order_value,
-  COUNT(DISTINCT o.id) AS order_count
-FROM product_categories pc
-JOIN products p ON pc.id = p.category_id
-JOIN order_items oi ON p.id = oi.product_id
-JOIN orders o ON oi.order_id = o.id
-WHERE o.created_at >= CURRENT_DATE - INTERVAL '6 months'
-GROUP BY pc.name
-ORDER BY avg_order_value DESC;
-```
-
-### Example 3: Learning from Corrections
-
-```
-User: "Show me inactive customers"
-
-NeuroBase: [generates SQL with WHERE last_login < 30 days]
-
-User: "No, I mean customers who haven't ordered in 90 days"
-
-NeuroBase:
-✅ Correction learned! Updated definition:
-   "inactive customers" → no orders in 90 days
-
-[Stores this mapping for future queries]
+Run demo:
+```bash
+npx tsx examples/multi-agent-demo.ts
 ```
 
 ---
 
-## 🏗️ Project Structure
-
-```
-neurobase/
-├── src/
-│   ├── agents/
-│   │   ├── linguistic.ts      # NL → SQL translation
-│   │   ├── optimizer.ts       # Query optimization
-│   │   └── memory.ts          # Learning & context
-│   ├── core/
-│   │   ├── neurobase.ts       # Main orchestrator
-│   │   ├── database.ts        # Tiger Cloud connection
-│   │   └── schema.ts          # Schema introspection
-│   ├── llm/
-│   │   ├── providers/
-│   │   │   ├── openai.ts      # OpenAI integration
-│   │   │   ├── anthropic.ts   # Claude integration
-│   │   │   └── ollama.ts      # Ollama integration
-│   │   └── base.ts            # LLM provider interface
-│   ├── ui/
-│   │   ├── cli.ts             # Interactive CLI
-│   │   └── api.ts             # REST API server
-│   └── utils/
-│       ├── logger.ts
-│       ├── validator.ts
-│       └── embeddings.ts
-├── examples/
-│   ├── ecommerce/             # E-commerce demo
-│   ├── analytics/             # Analytics demo
-│   └── crm/                   # CRM demo
-├── docs/
-│   ├── ARCHITECTURE.md        # Detailed architecture
-│   ├── API.md                 # API documentation
-│   ├── DEPLOYMENT.md          # Deployment guide
-│   └── CONTRIBUTING.md        # Contribution guidelines
-├── sql/
-│   ├── init.sql               # Initial schema
-│   └── seed.sql               # Sample data
-├── tests/
-│   ├── unit/
-│   ├── integration/
-│   └── e2e/
-├── .env.example
-├── package.json
-├── tsconfig.json
-└── README.md
-```
-
----
-
-## 🧪 Running Tests
+## 🧪 Testing
 
 ```bash
 # Unit tests
@@ -376,65 +425,76 @@ npm run test:all
 
 ---
 
-## 📊 Performance
+## 📈 Performance
 
-NeuroBase is designed for performance:
-
-- **Query Translation**: < 500ms (depends on LLM provider)
-- **Local Ollama**: < 200ms for small models
-- **Schema Caching**: Reduces introspection overhead
-- **Connection Pooling**: Efficient database connections
-- **Embedding Cache**: Fast semantic search for learned queries
+- **Query Translation**: <500ms (LLM dependent)
+- **Local Ollama**: <200ms for small models
+- **Fork Creation**: ~2 seconds (zero-copy)
+- **Schema Caching**: 5-minute TTL
+- **Embedding Generation**: <100ms (local)
+- **Sync Rate**: 100-1000 records/second
 
 ---
 
 ## 🛡️ Security
 
-- **Read-only mode** for production databases
-- **Parameterized queries** prevent SQL injection
-- **API key encryption** at rest
-- **Audit logging** for all queries
-- **Rate limiting** on API endpoints
+- **Parameterized Queries** - SQL injection prevention
+- **Query Validation** - Dangerous pattern detection
+- **Read-Only Mode** - Restrict to SELECT
+- **API Rate Limiting** - 100 requests per 15 minutes
+- **Query Timeout** - 30 second maximum
+- **Fork Isolation** - Complete separation
+
+---
+
+## 🔧 Development
+
+```bash
+# Build
+npm run build
+
+# Type checking
+npm run typecheck
+
+# Linting
+npm run lint
+
+# Format code
+npm run format
+
+# Watch mode
+npm run dev
+```
 
 ---
 
 ## 🗺️ Roadmap
 
-### Phase 1: Core (Current)
+### Current
 - ✅ Multi-agent architecture
 - ✅ Natural language to SQL
 - ✅ Multi-LLM support
-- ✅ Basic learning system
+- ✅ Learning system
+- ✅ Real-time dashboard
 
-### Phase 2: Intelligence
-- 🔄 Advanced context retention
-- 🔄 Cross-query optimization
-- 🔄 Automatic materialized view suggestions
-- 🔄 Performance regression detection
-
-### Phase 3: Ecosystem
-- ⏳ Web UI dashboard
-- ⏳ VS Code extension
-- ⏳ Slack/Discord bot integration
-- ⏳ Query templates marketplace
-
-### Phase 4: Enterprise
-- ⏳ Multi-tenant support
-- ⏳ Role-based access control
-- ⏳ Advanced analytics
-- ⏳ Custom agent plugins
+### Planned
+- 🔄 Advanced analytics
+- 🔄 Custom agent plugins
+- 🔄 Web UI for query building
+- 🔄 VS Code extension
+- 🔄 Query templates marketplace
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines.
+Contributions welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open Pull Request
 
 ---
 
@@ -446,8 +506,8 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🙏 Acknowledgments
 
-- **Tiger Data** for Agentic Postgres and the hackathon
-- **Anthropic** for Claude and the Model Context Protocol
+- **Tiger Data** for Agentic Postgres and zero-copy forks
+- **Anthropic** for Claude and Model Context Protocol
 - **OpenAI** for GPT models
 - **Ollama** for local LLM support
 - The open-source community
@@ -459,14 +519,13 @@ MIT License - see [LICENSE](LICENSE) for details.
 - **Documentation**: [docs/](docs/)
 - **Issues**: [GitHub Issues](https://github.com/4n0nn43x/neurobase/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/4n0nn43x/neurobase/discussions)
-- **Email**: support@neurobase.dev
 
 ---
 
 ## 🌟 Star Us!
 
-If you find NeuroBase useful, please consider starring the repository!
+If you find NeuroBase useful, please star the repository!
 
 ---
 
-**Built with ❤️ for the Tiger Data Agentic Postgres Challenge**
+**Built with ❤️ using PostgreSQL, Tiger Cloud, and AI**

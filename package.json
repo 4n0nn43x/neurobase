@@ -9,6 +9,8 @@
     "dev": "tsx watch src/cli.ts",
     "start": "npm run build && node dist/cli.js",
     "serve": "npm run build && node dist/api.js",
+    "serve:multi-agent": "npm run build && node dist/multi-agent-api.js",
+    "dev:multi-agent": "tsx watch src/multi-agent-api.ts",
     "init": "npm run build && node dist/scripts/init-db.js",
     "test": "jest --coverage",
     "test:integration": "jest --testPathPattern=integration",
