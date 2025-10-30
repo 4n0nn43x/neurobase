@@ -97,12 +97,12 @@ export class MonitoringDashboard {
     logger.info('Setting up monitoring dashboard routes');
 
     // Main dashboard page
-    app.get('/dashboard', (req: Request, res: Response) => {
+    app.get('/dashboard', (_req: Request, res: Response) => {
       res.send(this.getDashboardHTML());
     });
 
     // API endpoints for dashboard data
-    app.get('/api/dashboard/metrics', async (req: Request, res: Response) => {
+    app.get('/api/dashboard/metrics', async (_req: Request, res: Response) => {
       try {
         const metrics = await this.getMetrics();
         res.json(metrics);
@@ -112,7 +112,7 @@ export class MonitoringDashboard {
       }
     });
 
-    app.get('/api/dashboard/agents', async (req: Request, res: Response) => {
+    app.get('/api/dashboard/agents', async (_req: Request, res: Response) => {
       try {
         const agents = await this.getAgentMetrics();
         res.json(agents);
@@ -131,7 +131,7 @@ export class MonitoringDashboard {
       }
     });
 
-    app.get('/api/dashboard/statistics', async (req: Request, res: Response) => {
+    app.get('/api/dashboard/statistics', async (_req: Request, res: Response) => {
       try {
         const stats = await this.orchestrator.getStatistics();
         res.json(stats);

@@ -453,7 +453,12 @@ export class MultiAgentOrchestrator extends EventEmitter {
   async getStatistics(): Promise<any> {
     const agents = Array.from(this.agents.values());
 
-    const stats = {
+    // Get pending tasks count
+    const pendingTasksResult = await this.mainPool.query(
+      `SELECT COUNT(*) as count FROM neurobase_agent_tasks WHERE status = 'pending'`
+    );
+
+    const stats: any = {
       totalAgents: agents.length,
       runningAgents: agents.filter(a => a.status === 'running').length,
       idleAgents: agents.filter(a => a.status === 'idle').length,
@@ -464,16 +469,9 @@ export class MultiAgentOrchestrator extends EventEmitter {
       avgProcessingTime: agents.length > 0
         ? agents.reduce((sum, a) => sum + a.metrics.avgProcessingTime, 0) / agents.length
         : 0,
+      pendingTasks: parseInt(pendingTasksResult.rows[0].count),
+      recentEvents: this.eventHistory.slice(-20),
     };
-
-    // Get pending tasks count
-    const pendingTasksResult = await this.mainPool.query(
-      `SELECT COUNT(*) as count FROM neurobase_agent_tasks WHERE status = 'pending'`
-    );
-    stats['pendingTasks'] = parseInt(pendingTasksResult.rows[0].count);
-
-    // Get recent events
-    stats['recentEvents'] = this.eventHistory.slice(-20);
 
     return stats;
   }

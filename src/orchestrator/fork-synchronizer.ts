@@ -349,7 +349,7 @@ export class ForkSynchronizer {
     targetPool: Pool,
     tableName: string,
     strategy: SyncStrategy,
-    config: SyncConfig
+    _config: SyncConfig
   ): Promise<number> {
     logger.debug({ tableName }, 'Performing selective sync');
 

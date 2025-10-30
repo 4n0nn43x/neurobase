@@ -8,9 +8,11 @@ import { ForkSynchronizer } from '../src/orchestrator/fork-synchronizer';
 import { SchemaEvolutionAgent } from '../src/agents/schema-evolution';
 import { QueryValidatorAgent } from '../src/agents/query-validator';
 import { LearningAggregatorAgent } from '../src/agents/learning-aggregator';
-import { ABTestingAgent } from '../src/agents/ab-testing';
 import { DatabaseForkManager } from '../src/database/fork';
-import { loadLLMProvider } from '../src/llm';
+import { OpenAIProvider } from '../src/llm/providers/openai';
+import { AnthropicProvider } from '../src/llm/providers/anthropic';
+import { OllamaProvider } from '../src/llm/providers/ollama';
+import { config } from '../src/config';
 import { Pool } from 'pg';
 import * as dotenv from 'dotenv';
 
@@ -106,19 +108,35 @@ async function multiAgentDemo() {
   const schemaAgentPool = schemaAgentDetails?.pool;
 
   if (schemaAgentPool) {
-    const llmProvider = loadLLMProvider();
-    const schemaEvolutionAgent = new SchemaEvolutionAgent(schemaAgentPool, llmProvider);
+    // Initialize LLM provider based on config
+    let llmProvider;
+    if (config.llm.provider === 'openai' && config.llm.openai) {
+      llmProvider = new OpenAIProvider(config.llm.openai);
+    } else if (config.llm.provider === 'anthropic' && config.llm.anthropic) {
+      llmProvider = new AnthropicProvider(config.llm.anthropic);
+    } else if (config.llm.ollama) {
+      llmProvider = new OllamaProvider(config.llm.ollama);
+    } else {
+      console.log('⚠️  No LLM provider configured, skipping schema evolution demo');
+      llmProvider = null;
+    }
+
+    if (!llmProvider) {
+      console.log('   Skipped: Schema Evolution Agent (no LLM provider)\n');
+    } else {
+      const schemaEvolutionAgent = new SchemaEvolutionAgent(schemaAgentPool, llmProvider);
 
     console.log('   Analyzing schema and query patterns...');
 
-    const analysis = await schemaEvolutionAgent.analyzeAndRecommend();
+      const analysis = await schemaEvolutionAgent.analyzeAndRecommend();
 
-    console.log(`   Found ${analysis.recommendations.length} recommendations:`);
+      console.log(`   Found ${analysis.recommendations.length} recommendations:`);
 
-    for (const rec of analysis.recommendations.slice(0, 3)) {
-      console.log(`   - ${rec.type}: ${rec.description}`);
-      console.log(`     Impact: ${rec.estimatedImpact.querySpeedup}% speedup`);
-      console.log(`     Priority: ${rec.priority}\n`);
+      for (const rec of analysis.recommendations.slice(0, 3)) {
+        console.log(`   - ${rec.type}: ${rec.description}`);
+        console.log(`     Impact: ${rec.estimatedImpact.querySpeedup}% speedup`);
+        console.log(`     Priority: ${rec.priority}\n`);
+      }
     }
   }
 

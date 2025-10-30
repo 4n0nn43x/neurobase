@@ -41,13 +41,6 @@ export class QueryValidatorAgent {
     /GRANT|REVOKE/i,
   ];
 
-  // Expensive operation patterns
-  private expensivePatterns = [
-    /SELECT\s+\*\s+FROM/i,
-    /CROSS\s+JOIN/i,
-    /NOT\s+IN\s*\(/i,
-  ];
-
   constructor(pool: Pool) {
     this.pool = pool;
   }
@@ -55,7 +48,7 @@ export class QueryValidatorAgent {
   /**
    * Validate a SQL query
    */
-  async validateQuery(sql: string, context?: any): Promise<ValidationResult> {
+  async validateQuery(sql: string, _context?: any): Promise<ValidationResult> {
     logger.info({ sql: sql.substring(0, 100) }, 'Validating query');
 
     const result: ValidationResult = {

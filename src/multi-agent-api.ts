@@ -15,12 +15,7 @@ import { logger } from './utils/logger';
 import { MultiAgentOrchestrator, AgentConfig } from './orchestrator/multi-agent-orchestrator';
 import { ForkSynchronizer, SyncConfig } from './orchestrator/fork-synchronizer';
 import { MonitoringDashboard } from './dashboard/monitor';
-import { SchemaEvolutionAgent } from './agents/schema-evolution';
-import { QueryValidatorAgent } from './agents/query-validator';
-import { LearningAggregatorAgent } from './agents/learning-aggregator';
-import { ABTestingAgent } from './agents/ab-testing';
 import { DatabaseForkManager } from './database/fork';
-import { loadLLMProvider } from './llm';
 
 const app = express();
 const port = config.neurobase.port || 3000;
@@ -137,7 +132,7 @@ app.post('/api/agents/register', async (req: Request, res: Response, next: NextF
  * Get all agents
  * GET /api/agents
  */
-app.get('/api/agents', async (req: Request, res: Response, next: NextFunction) => {
+app.get('/api/agents', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const agents = orchestrator.getAgents();
 
@@ -282,7 +277,7 @@ app.get('/api/tasks/:taskId', async (req: Request, res: Response, next: NextFunc
  * Trigger schema analysis
  * POST /api/schema/analyze
  */
-app.post('/api/schema/analyze', async (req: Request, res: Response, next: NextFunction) => {
+app.post('/api/schema/analyze', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     // This would use the Schema Evolution Agent
     // For now, return placeholder
@@ -343,7 +338,7 @@ app.post('/api/validate', async (req: Request, res: Response, next: NextFunction
  */
 app.post('/api/experiments', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, description, strategies } = req.body;
+    const { name, strategies } = req.body;
 
     if (!name || !strategies || strategies.length < 2) {
       res.status(400).json({
@@ -369,7 +364,7 @@ app.post('/api/experiments', async (req: Request, res: Response, next: NextFunct
  * Get experiments
  * GET /api/experiments
  */
-app.get('/api/experiments', async (req: Request, res: Response, next: NextFunction) => {
+app.get('/api/experiments', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     // This would use the A/B Testing Agent
     // For now, return placeholder
@@ -455,7 +450,7 @@ app.get('/api/sync/:jobId', async (req: Request, res: Response, next: NextFuncti
  * Get all sync jobs
  * GET /api/sync
  */
-app.get('/api/sync', async (req: Request, res: Response, next: NextFunction) => {
+app.get('/api/sync', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const jobs = synchronizer.getAllSyncJobs();
 
@@ -481,7 +476,7 @@ app.get('/api/sync', async (req: Request, res: Response, next: NextFunction) => 
  * Get learning insights
  * GET /api/insights
  */
-app.get('/api/insights', async (req: Request, res: Response, next: NextFunction) => {
+app.get('/api/insights', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     // This would use the Learning Aggregator Agent
     // For now, return placeholder
@@ -499,7 +494,7 @@ app.get('/api/insights', async (req: Request, res: Response, next: NextFunction)
  * Get knowledge graph
  * GET /api/knowledge-graph
  */
-app.get('/api/knowledge-graph', async (req: Request, res: Response, next: NextFunction) => {
+app.get('/api/knowledge-graph', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     // This would use the Learning Aggregator Agent
     // For now, return placeholder
@@ -524,7 +519,7 @@ app.get('/api/knowledge-graph', async (req: Request, res: Response, next: NextFu
  * Get system statistics
  * GET /api/statistics
  */
-app.get('/api/statistics', async (req: Request, res: Response, next: NextFunction) => {
+app.get('/api/statistics', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const stats = await orchestrator.getStatistics();
 

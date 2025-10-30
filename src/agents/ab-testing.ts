@@ -6,7 +6,7 @@
 
 import { Pool } from 'pg';
 import { logger } from '../utils/logger';
-import { DatabaseForkManager, ForkInfo } from '../database/fork';
+import { DatabaseForkManager } from '../database/fork';
 
 export interface ABTestStrategy {
   id: string;
@@ -562,7 +562,7 @@ export class ABTestingAgent {
   /**
    * Load experiment results from database
    */
-  private async loadExperimentResults(experimentId: string): Promise<Map<string, StrategyResult>> {
+  private async loadExperimentResults(_experimentId: string): Promise<Map<string, StrategyResult>> {
     // This would load actual results from database
     // For now, return from memory
     const results = new Map<string, StrategyResult>();

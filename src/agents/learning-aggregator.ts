@@ -157,7 +157,7 @@ export class LearningAggregatorAgent {
   /**
    * Identify patterns that span multiple agents
    */
-  private async identifyCrossAgentPatterns(learnings: AgentLearning[]): Promise<any[]> {
+  private async identifyCrossAgentPatterns(_learnings: AgentLearning[]): Promise<any[]> {
     const patterns: any[] = [];
 
     // Get recent queries from all agents
