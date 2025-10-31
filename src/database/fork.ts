@@ -85,7 +85,7 @@ export class DatabaseForkManager {
 
     // Add optional flags
     if (options.name) {
-      args.push('--name', options.name);
+      args.push('--name', `"${options.name}"`);
     }
     if (options.cpu) {
       args.push('--cpu', options.cpu);

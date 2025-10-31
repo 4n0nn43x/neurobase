@@ -88,7 +88,7 @@ INSERT INTO reviews (product_id, user_id, rating, comment, created_at)
 SELECT
     p.id,
     u.id,
-    (RANDOM() * 5 + 1)::INTEGER,
+    (FLOOR(RANDOM() * 5) + 1)::INTEGER,  -- Generates 1-5 (not 6)
     CASE (RANDOM() * 4)::INTEGER
         WHEN 0 THEN 'Great product! Highly recommend.'
         WHEN 1 THEN 'Good value for money.'

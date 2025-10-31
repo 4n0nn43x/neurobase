@@ -22,7 +22,16 @@ const port = config.neurobase.port || 3000;
 
 // Security middleware
 app.use(helmet({
-  contentSecurityPolicy: false, // Disabled for dashboard
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      connectSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      fontSrc: ["'self'", "data:"],
+    },
+  },
 }));
 app.use(cors());
 app.use(express.json());
