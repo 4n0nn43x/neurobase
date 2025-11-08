@@ -25,11 +25,25 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: [
+        "'self'",
+        "'unsafe-inline'",
+        "https://cdnjs.cloudflare.com",
+        "https://cdn.jsdelivr.net"
+      ],
+      scriptSrc: [
+        "'self'",
+        "'unsafe-inline'",
+        "https://cdn.jsdelivr.net",
+        "https://cdn.tailwindcss.com"
+      ],
       connectSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "https:"],
-      fontSrc: ["'self'", "data:"],
+      fontSrc: [
+        "'self'",
+        "data:",
+        "https://cdnjs.cloudflare.com"
+      ],
     },
   },
 }));
@@ -580,6 +594,12 @@ async function start() {
       logger.info({ port }, '🚀 NeuroBase Multi-Agent API Server started');
       logger.info(`📊 Dashboard: http://localhost:${port}/dashboard`);
       logger.info(`🔗 API: http://localhost:${port}/api`);
+
+      // Also output to console for visibility
+      console.log('\n🚀 NeuroBase Multi-Agent API Server started');
+      console.log(`📊 Dashboard: http://localhost:${port}/dashboard`);
+      console.log(`🔗 API: http://localhost:${port}/api`);
+      console.log(`✅ Server running on port ${port}\n`);
     });
   } catch (error) {
     logger.error({ error }, 'Failed to start server');

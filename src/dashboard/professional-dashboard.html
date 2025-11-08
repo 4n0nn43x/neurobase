@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuroBase Multi-Agent System | Professional Dashboard</title>
+
+    <!-- ApexCharts for Professional Charts -->
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+    <!-- Tailwind CSS for Modern Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Custom Styles -->
+    <style>
+        :root {
+            --bg-primary: #0f0f23;
+            --bg-secondary: #1a1b3a;
+            --bg-card: #16172f;
+            --border-color: #2a2d5a;
+            --text-primary: #e4e6eb;
+            --text-secondary: #9ca3af;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-purple: #8b5cf6;
+            --accent-red: #ef4444;
+            --accent-yellow: #f59e0b;
+            --gradient-1: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-2: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            overflow-x: hidden;
+        }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-blue);
+        }
+
+        /* Grid System */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 24px;
+            padding: 24px;
+            max-width: 1920px;
+            margin: 0 auto;
+        }
+
+        /* Card Styles */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            border-color: var(--accent-blue);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-title i {
+            color: var(--accent-blue);
+            font-size: 20px;
+        }
+
+        /* Stat Cards */
+        .stat-card {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+            animation: pulse 4s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 0.3; }
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 12px 0;
+            font-feature-settings: 'tnum';
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-change {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-top: 8px;
+        }
+
+        .stat-change.positive {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--accent-green);
+        }
+
+        .stat-change.negative {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+        }
+
+        /* Agent Cards */
+        .agent-card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .agent-card:hover {
+            background: rgba(59, 130, 246, 0.1);
+            border-color: var(--accent-blue);
+        }
+
+        .agent-info {
+            flex: 1;
+        }
+
+        .agent-name {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .agent-type {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .agent-status {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-running {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--accent-green);
+            border: 1px solid var(--accent-green);
+        }
+
+        .status-idle {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--accent-yellow);
+            border: 1px solid var(--accent-yellow);
+        }
+
+        .status-error {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+            border: 1px solid var(--accent-red);
+        }
+
+        /* Header */
+        .dashboard-header {
+            background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+            border-bottom: 1px solid var(--border-color);
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        .header-content {
+            max-width: 1920px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo {
+            width: 48px;
+            height: 48px;
+            background: var(--gradient-2);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .title-text h1 {
+            font-size: 28px;
+            font-weight: 700;
+            background: var(--gradient-1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 4px;
+        }
+
+        .title-text p {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        /* Connection Status */
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid var(--accent-green);
+            border-radius: 20px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            animation: blink 2s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* Event Timeline */
+        .event-item {
+            display: flex;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .event-icon {
+            width: 36px;
+            height: 36px;
+            background: rgba(59, 130, 246, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-blue);
+            flex-shrink: 0;
+        }
+
+        .event-content {
+            flex: 1;
+        }
+
+        .event-title {
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .event-time {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* Loading Animation */
+        .loading-skeleton {
+            background: linear-gradient(90deg,
+                var(--bg-secondary) 25%,
+                rgba(59, 130, 246, 0.1) 50%,
+                var(--bg-secondary) 75%
+            );
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+            border-radius: 4px;
+        }
+
+        @keyframes loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1536px) {
+            .dashboard-grid { grid-template-columns: repeat(8, 1fr); }
+        }
+
+        @media (max-width: 1024px) {
+            .dashboard-grid { grid-template-columns: repeat(4, 1fr); }
+        }
+
+        @media (max-width: 640px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                padding: 16px;
+            }
+            .header-content { flex-direction: column; gap: 16px; }
+        }
+
+        /* Chart Container */
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+
+        /* Tooltip */
+        .tooltip {
+            position: absolute;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 12px;
+            color: var(--text-primary);
+            pointer-events: none;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .tooltip.show {
+            opacity: 1;
+        }
+
+        /* Action Buttons */
+        .action-btn {
+            background: var(--gradient-2);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
+        }
+
+        .action-btn:active {
+            transform: translateY(0);
+        }
+
+        /* Notification Badge */
+        .notification-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: var(--accent-red);
+            color: white;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 10px;
+            min-width: 18px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="dashboard-header">
+        <div class="header-content">
+            <div class="header-title">
+                <div class="logo">
+                    <i class="fas fa-brain"></i>
+                </div>
+                <div class="title-text">
+                    <h1>NeuroBase Multi-Agent System</h1>
+                    <p>Real-time Autonomous Database Intelligence Dashboard</p>
+                </div>
+            </div>
+            <div class="connection-status">
+                <span class="status-dot"></span>
+                <span>Connected</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard Grid -->
+    <div class="dashboard-grid">
+        <!-- Stat Cards Row -->
+        <div class="card stat-card" style="grid-column: span 3;">
+            <div class="card-content">
+                <div class="stat-label">
+                    <i class="fas fa-robot"></i> Total Agents
+                </div>
+                <div class="stat-value" id="total-agents">0</div>
+                <div class="stat-change positive">
+                    <i class="fas fa-arrow-up"></i> Active
+                </div>
+            </div>
+        </div>
+
+        <div class="card stat-card" style="grid-column: span 3;">
+            <div class="card-content">
+                <div class="stat-label">
+                    <i class="fas fa-tasks"></i> Tasks Processed
+                </div>
+                <div class="stat-value" id="total-tasks">0</div>
+                <div class="stat-change positive">
+                    <i class="fas fa-arrow-up"></i> <span id="task-rate">0</span>/min
+                </div>
+            </div>
+        </div>
+
+        <div class="card stat-card" style="grid-column: span 3;">
+            <div class="card-content">
+                <div class="stat-label">
+                    <i class="fas fa-check-circle"></i> Success Rate
+                </div>
+                <div class="stat-value" id="success-rate">0%</div>
+                <div class="stat-change positive">
+                    <i class="fas fa-arrow-up"></i> 2.5%
+                </div>
+            </div>
+        </div>
+
+        <div class="card stat-card" style="grid-column: span 3;">
+            <div class="card-content">
+                <div class="stat-label">
+                    <i class="fas fa-clock"></i> Avg Response
+                </div>
+                <div class="stat-value" id="avg-response">0ms</div>
+                <div class="stat-change positive">
+                    <i class="fas fa-arrow-down"></i> 15ms
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance Chart -->
+        <div class="card" style="grid-column: span 8;">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-chart-line"></i> System Performance
+                </h3>
+                <div class="time-range">
+                    <button class="time-btn active">1H</button>
+                    <button class="time-btn">6H</button>
+                    <button class="time-btn">24H</button>
+                    <button class="time-btn">7D</button>
+                </div>
+            </div>
+            <div id="performance-chart" class="chart-container"></div>
+        </div>
+
+        <!-- Agent Status -->
+        <div class="card" style="grid-column: span 4;">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-robot"></i> Active Agents
+                    <span class="notification-badge" id="agent-count">0</span>
+                </h3>
+                <button class="action-btn" style="padding: 6px 12px; font-size: 12px;">
+                    <i class="fas fa-plus"></i> New Agent
+                </button>
+            </div>
+            <div id="agent-list" class="agent-list">
+                <!-- Agents will be inserted here -->
+            </div>
+        </div>
+
+        <!-- Task Distribution -->
+        <div class="card" style="grid-column: span 4;">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-chart-pie"></i> Task Distribution
+                </h3>
+            </div>
+            <div id="task-distribution-chart" class="chart-container"></div>
+        </div>
+
+        <!-- Resource Usage -->
+        <div class="card" style="grid-column: span 4;">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-server"></i> Resource Usage
+                </h3>
+            </div>
+            <div id="resource-chart" class="chart-container"></div>
+        </div>
+
+        <!-- Event Timeline -->
+        <div class="card" style="grid-column: span 4;">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-stream"></i> Event Timeline
+                </h3>
+            </div>
+            <div id="event-timeline" style="max-height: 400px; overflow-y: auto;">
+                <!-- Events will be inserted here -->
+            </div>
+        </div>
+
+        <!-- Query Performance Heatmap -->
+        <div class="card" style="grid-column: span 8;">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-fire"></i> Query Performance Heatmap
+                </h3>
+            </div>
+            <div id="heatmap-chart" class="chart-container"></div>
+        </div>
+
+        <!-- Synchronization Status -->
+        <div class="card" style="grid-column: span 4;">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-sync"></i> Fork Synchronization
+                </h3>
+            </div>
+            <div id="sync-status">
+                <div class="sync-metric">
+                    <span>Active Syncs:</span> <strong id="active-syncs">0</strong>
+                </div>
+                <div class="sync-metric">
+                    <span>Records Synced:</span> <strong id="records-synced">0</strong>
+                </div>
+                <div class="sync-metric">
+                    <span>Last Sync:</span> <strong id="last-sync">Never</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ApexCharts Configuration and Data Loading -->
+    <script>
+        // Chart Theme Configuration
+        const chartTheme = {
+            mode: 'dark',
+            palette: 'palette1',
+            monochrome: {
+                enabled: false,
+                color: '#3b82f6',
+                shadeTo: 'dark',
+                shadeIntensity: 0.65
+            },
+        };
+
+        // Common Chart Options
+        const commonOptions = {
+            chart: {
+                background: 'transparent',
+                toolbar: {
+                    show: false
+                },
+                animations: {
+                    enabled: true,
+                    easing: 'easeinout',
+                    speed: 800,
+                    animateGradually: {
+                        enabled: true,
+                        delay: 150
+                    },
+                    dynamicAnimation: {
+                        enabled: true,
+                        speed: 350
+                    }
+                }
+            },
+            theme: chartTheme,
+            grid: {
+                borderColor: '#2a2d5a',
+                strokeDashArray: 0,
+            },
+            tooltip: {
+                theme: 'dark',
+                style: {
+                    fontSize: '12px',
+                    fontFamily: 'Inter, sans-serif'
+                },
+                x: {
+                    show: true,
+                    format: 'HH:mm:ss'
+                }
+            }
+        };
+
+        // Performance Chart (Real-time Line Chart)
+        const performanceChart = new ApexCharts(document.querySelector("#performance-chart"), {
+            ...commonOptions,
+            chart: {
+                ...commonOptions.chart,
+                type: 'line',
+                height: 300,
+            },
+            series: [{
+                name: 'Query Time',
+                data: generateInitialData(20, 50, 200)
+            }, {
+                name: 'CPU Usage',
+                data: generateInitialData(20, 20, 80)
+            }, {
+                name: 'Memory',
+                data: generateInitialData(20, 30, 70)
+            }],
+            colors: ['#3b82f6', '#10b981', '#8b5cf6'],
+            stroke: {
+                curve: 'smooth',
+                width: 2
+            },
+            xaxis: {
+                type: 'datetime',
+                labels: {
+                    style: {
+                        colors: '#9ca3af'
+                    }
+                }
+            },
+            yaxis: {
+                labels: {
+                    style: {
+                        colors: '#9ca3af'
+                    }
+                }
+            },
+            legend: {
+                position: 'top',
+                horizontalAlign: 'right',
+                labels: {
+                    colors: '#e4e6eb'
+                }
+            }
+        });
+        performanceChart.render();
+
+        // Task Distribution (Donut Chart)
+        const taskDistributionChart = new ApexCharts(document.querySelector("#task-distribution-chart"), {
+            ...commonOptions,
+            chart: {
+                ...commonOptions.chart,
+                type: 'donut',
+                height: 300,
+            },
+            series: [44, 25, 19, 12],
+            labels: ['Schema Analysis', 'Query Validation', 'Learning', 'Synchronization'],
+            colors: ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b'],
+            plotOptions: {
+                pie: {
+                    donut: {
+                        size: '70%',
+                        labels: {
+                            show: true,
+                            total: {
+                                show: true,
+                                label: 'Total Tasks',
+                                color: '#e4e6eb'
+                            }
+                        }
+                    }
+                }
+            },
+            legend: {
+                position: 'bottom',
+                labels: {
+                    colors: '#e4e6eb'
+                }
+            }
+        });
+        taskDistributionChart.render();
+
+        // Resource Usage (Radial Bar)
+        const resourceChart = new ApexCharts(document.querySelector("#resource-chart"), {
+            ...commonOptions,
+            chart: {
+                ...commonOptions.chart,
+                type: 'radialBar',
+                height: 300,
+            },
+            series: [67, 84, 42],
+            labels: ['CPU', 'Memory', 'Disk I/O'],
+            colors: ['#3b82f6', '#10b981', '#8b5cf6'],
+            plotOptions: {
+                radialBar: {
+                    hollow: {
+                        size: '40%',
+                    },
+                    dataLabels: {
+                        show: true,
+                        name: {
+                            fontSize: '14px',
+                            color: '#e4e6eb'
+                        },
+                        value: {
+                            fontSize: '16px',
+                            color: '#e4e6eb'
+                        }
+                    }
+                }
+            }
+        });
+        resourceChart.render();
+
+        // Query Performance Heatmap
+        const heatmapChart = new ApexCharts(document.querySelector("#heatmap-chart"), {
+            ...commonOptions,
+            chart: {
+                ...commonOptions.chart,
+                type: 'heatmap',
+                height: 300,
+            },
+            series: generateHeatmapData(),
+            colors: ['#3b82f6'],
+            dataLabels: {
+                enabled: false
+            },
+            xaxis: {
+                type: 'category',
+                categories: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'],
+                labels: {
+                    style: {
+                        colors: '#9ca3af'
+                    }
+                }
+            },
+            yaxis: {
+                labels: {
+                    style: {
+                        colors: '#9ca3af'
+                    }
+                }
+            }
+        });
+        heatmapChart.render();
+
+        // Helper Functions
+        function generateInitialData(points, min, max) {
+            const data = [];
+            const now = new Date().getTime();
+            for (let i = points; i > 0; i--) {
+                data.push({
+                    x: now - (i * 60000),
+                    y: Math.floor(Math.random() * (max - min + 1)) + min
+                });
+            }
+            return data;
+        }
+
+        function generateHeatmapData() {
+            const series = [];
+            const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+            days.forEach(day => {
+                const data = [];
+                for (let i = 0; i < 6; i++) {
+                    data.push({
+                        x: i.toString(),
+                        y: Math.floor(Math.random() * 100)
+                    });
+                }
+                series.push({
+                    name: day,
+                    data: data
+                });
+            });
+
+            return series;
+        }
+
+        // Real-time Data Updates
+        async function fetchDashboardData() {
+            try {
+                const [metrics, events, agents] = await Promise.all([
+                    fetch('/api/dashboard/metrics').then(r => r.json()),
+                    fetch('/api/dashboard/events?limit=10').then(r => r.json()),
+                    fetch('/api/dashboard/agents').then(r => r.json())
+                ]);
+
+                updateStatCards(metrics);
+                updateAgentList(agents);
+                updateEventTimeline(events);
+                updateCharts(metrics);
+            } catch (error) {
+                console.error('Error fetching dashboard data:', error);
+            }
+        }
+
+        function updateStatCards(metrics) {
+            document.getElementById('total-agents').textContent = metrics.system?.totalAgents || 0;
+            document.getElementById('total-tasks').textContent = metrics.system?.totalTasks || 0;
+            document.getElementById('success-rate').textContent =
+                ((metrics.performance?.errorRate || 0) > 0
+                    ? (100 - metrics.performance.errorRate).toFixed(1)
+                    : '100') + '%';
+            document.getElementById('avg-response').textContent =
+                (metrics.performance?.avgQueryTime || 0).toFixed(0) + 'ms';
+        }
+
+        function updateAgentList(agents) {
+            const agentList = document.getElementById('agent-list');
+            document.getElementById('agent-count').textContent = agents.length;
+
+            if (agents.length === 0) {
+                agentList.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                        <i class="fas fa-robot" style="font-size: 48px; opacity: 0.3; margin-bottom: 16px;"></i>
+                        <p>No agents registered</p>
+                    </div>
+                `;
+                return;
+            }
+
+            agentList.innerHTML = agents.map(agent => `
+                <div class="agent-card">
+                    <div class="agent-info">
+                        <div class="agent-name">${agent.name}</div>
+                        <div class="agent-type">${agent.type}</div>
+                    </div>
+                    <span class="agent-status status-${agent.status}">
+                        ${agent.status}
+                    </span>
+                </div>
+            `).join('');
+        }
+
+        function updateEventTimeline(events) {
+            const timeline = document.getElementById('event-timeline');
+
+            if (!events || events.length === 0) {
+                timeline.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                        <i class="fas fa-stream" style="font-size: 48px; opacity: 0.3; margin-bottom: 16px;"></i>
+                        <p>No recent events</p>
+                    </div>
+                `;
+                return;
+            }
+
+            timeline.innerHTML = events.map(event => {
+                const icon = getEventIcon(event.type);
+                const time = new Date(event.timestamp).toLocaleTimeString();
+
+                return `
+                    <div class="event-item">
+                        <div class="event-icon">
+                            <i class="fas fa-${icon}"></i>
+                        </div>
+                        <div class="event-content">
+                            <div class="event-title">${event.type}</div>
+                            <div class="event-time">${time}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getEventIcon(eventType) {
+            const icons = {
+                'agent:started': 'play',
+                'agent:stopped': 'stop',
+                'agent:error': 'exclamation-triangle',
+                'task:completed': 'check',
+                'sync:started': 'sync',
+                'sync:completed': 'check-double',
+                'fork:created': 'code-branch'
+            };
+            return icons[eventType] || 'circle';
+        }
+
+        function updateCharts(metrics) {
+            // Update performance chart with new data point
+            const now = new Date().getTime();
+            const newData = {
+                x: now,
+                y: Math.floor(Math.random() * 150) + 50
+            };
+
+            performanceChart.appendData([{
+                data: [newData]
+            }]);
+        }
+
+        // Debounce function to prevent excessive updates
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // Request animation frame for smoother updates
+        let isUpdating = false;
+        const debouncedFetch = debounce(fetchDashboardData, 1000);
+
+        async function updateDashboard() {
+            if (isUpdating) return;
+            isUpdating = true;
+
+            try {
+                await fetchDashboardData();
+            } catch (error) {
+                console.error('Dashboard update error:', error);
+            } finally {
+                isUpdating = false;
+            }
+        }
+
+        // Initial load
+        updateDashboard();
+
+        // Auto-refresh every 15 seconds (reduced from 5 to improve performance)
+        setInterval(updateDashboard, 15000);
+
+        // Update charts with real data every 10 seconds (reduced from 3)
+        setInterval(() => {
+            if (!isUpdating) {
+                const now = new Date().getTime();
+                // Only update if chart exists and has data
+                if (performanceChart && performanceChart.dataURI) {
+                    requestAnimationFrame(() => {
+                        performanceChart.appendData([
+                            { data: [{ x: now, y: Math.floor(Math.random() * 150) + 50 }] },
+                            { data: [{ x: now, y: Math.floor(Math.random() * 60) + 20 }] },
+                            { data: [{ x: now, y: Math.floor(Math.random() * 40) + 30 }] }
+                        ]);
+                    });
+                }
+            }
+        }, 10000);
+    </script>
+</body>
+</html>

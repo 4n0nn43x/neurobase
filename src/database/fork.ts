@@ -11,7 +11,7 @@ const execAsync = promisify(exec);
 
 export interface ForkOptions {
   name?: string;
-  strategy: 'now' | 'last-snapshot' | 'to-timestamp';
+  strategy: 'now' | 'last-snapshot' | 'to-timestamp' | 'shared';
   timestamp?: string; // RFC3339 format for to-timestamp strategy
   cpu?: string;
   memory?: string;
@@ -67,7 +67,7 @@ export class DatabaseForkManager {
 
     const args: string[] = ['service', 'fork', this.currentServiceId];
 
-    // Add strategy flag
+    // Add strategy flag (skip for 'shared' strategy as it means no fork)
     switch (options.strategy) {
       case 'now':
         args.push('--now');
@@ -81,6 +81,8 @@ export class DatabaseForkManager {
         }
         args.push('--to-timestamp', options.timestamp);
         break;
+      case 'shared':
+        throw new Error('Cannot create fork with shared strategy - this should be handled by orchestrator');
     }
 
     // Add optional flags

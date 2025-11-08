@@ -81,6 +81,11 @@ export class MonitoringDashboard {
   private metricsHistory: DashboardMetrics[] = [];
   private maxHistorySize: number = 1000;
 
+  // Cache for expensive operations
+  private metricsCache?: { data: DashboardMetrics; timestamp: number };
+  private agentMetricsCache?: { data: AgentMetrics[]; timestamp: number };
+  private readonly CACHE_TTL = 5000; // 5 seconds cache TTL
+
   constructor(
     orchestrator: MultiAgentOrchestrator,
     synchronizer?: ForkSynchronizer
@@ -172,9 +177,16 @@ export class MonitoringDashboard {
   }
 
   /**
-   * Collect all metrics
+   * Collect all metrics (with caching)
    */
   async getMetrics(): Promise<DashboardMetrics> {
+    const now = Date.now();
+
+    // Return cached metrics if still valid
+    if (this.metricsCache && (now - this.metricsCache.timestamp) < this.CACHE_TTL) {
+      return this.metricsCache.data;
+    }
+
     const [system, agents, forks, sync, performance, insights] = await Promise.all([
       this.getSystemMetrics(),
       this.getAgentMetrics(),
@@ -193,7 +205,13 @@ export class MonitoringDashboard {
       insights,
     };
 
-    // Store in history
+    // Cache the metrics
+    this.metricsCache = {
+      data: metrics,
+      timestamp: now
+    };
+
+    // Store in history (limit to prevent memory bloat)
     this.metricsHistory.push(metrics);
     if (this.metricsHistory.length > this.maxHistorySize) {
       this.metricsHistory.shift();
@@ -221,12 +239,19 @@ export class MonitoringDashboard {
   }
 
   /**
-   * Get agent metrics
+   * Get agent metrics (with caching)
    */
   private async getAgentMetrics(): Promise<AgentMetrics[]> {
+    const now = Date.now();
+
+    // Return cached agent metrics if still valid
+    if (this.agentMetricsCache && (now - this.agentMetricsCache.timestamp) < this.CACHE_TTL) {
+      return this.agentMetricsCache.data;
+    }
+
     const agents = this.orchestrator.getAgents();
 
-    return agents.map(agent => ({
+    const metrics = agents.map(agent => ({
       id: agent.id,
       name: agent.config.name,
       type: agent.config.type,
@@ -239,6 +264,14 @@ export class MonitoringDashboard {
       avgProcessingTime: agent.metrics.avgProcessingTime,
       lastActivity: agent.lastActivity,
     }));
+
+    // Cache the agent metrics
+    this.agentMetricsCache = {
+      data: metrics,
+      timestamp: now
+    };
+
+    return metrics;
   }
 
   /**
@@ -316,6 +349,21 @@ export class MonitoringDashboard {
    * Generate dashboard HTML
    */
   private getDashboardHTML(): string {
+    // Use the professional dashboard
+    const fs = require('fs');
+    const path = require('path');
+    const dashboardPath = path.join(__dirname, '../../src/dashboard/professional-dashboard.html');
+
+    // Try to read the professional dashboard, fallback to inline HTML if not found
+    try {
+      if (fs.existsSync(dashboardPath)) {
+        return fs.readFileSync(dashboardPath, 'utf8');
+      }
+    } catch (error) {
+      logger.warn('Professional dashboard not found, using default');
+    }
+
+    // Fallback to original dashboard
     return `
 <!DOCTYPE html>
 <html lang="en">

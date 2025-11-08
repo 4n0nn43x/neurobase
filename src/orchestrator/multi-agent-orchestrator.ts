@@ -12,10 +12,11 @@ export interface AgentConfig {
   name: string;
   type: 'schema-evolution' | 'query-validator' | 'learning-aggregator' | 'ab-testing' | 'custom';
   enabled: boolean;
-  forkStrategy: 'now' | 'last-snapshot' | 'to-timestamp';
+  forkStrategy?: 'now' | 'last-snapshot' | 'to-timestamp' | 'shared'; // shared = no fork
   cpu?: string;
   memory?: string;
   autoStart?: boolean;
+  useFork?: boolean; // If false, agent uses main database instead of fork
 }
 
 export interface AgentInstance {
@@ -225,25 +226,43 @@ export class MultiAgentOrchestrator extends EventEmitter {
     logger.info({ agentId, agentType: agent.config.type }, 'Starting agent');
 
     try {
-      // Create database fork for this agent
-      const fork = await this.forkManager.createFork({
-        name: `${agent.config.name}-fork`,
-        strategy: agent.config.forkStrategy,
-        cpu: agent.config.cpu,
-        memory: agent.config.memory,
-        waitForCompletion: true,
-      });
+      // Check if agent should use a fork or shared database
+      const useFork = agent.config.useFork !== false && agent.config.forkStrategy !== 'shared';
 
-      agent.fork = fork;
+      if (useFork) {
+        // Create database fork for this agent
+        const fork = await this.forkManager.createFork({
+          name: `${agent.config.name}-fork`,
+          strategy: agent.config.forkStrategy || 'now',
+          cpu: agent.config.cpu,
+          memory: agent.config.memory,
+          waitForCompletion: true,
+        });
 
-      // Get connection string for the fork
-      const forkConnectionString = await this.forkManager.getForkConnectionString(fork.id);
+        agent.fork = fork;
 
-      // Create connection pool for this agent's fork
-      agent.pool = new Pool({
-        connectionString: forkConnectionString,
-        max: 5,
-      });
+        // Get connection string for the fork
+        const forkConnectionString = await this.forkManager.getForkConnectionString(fork.id);
+
+        // Create connection pool for this agent's fork
+        agent.pool = new Pool({
+          connectionString: forkConnectionString,
+          max: 5,
+        });
+
+        logger.info({ agentId, forkId: fork.id }, 'Agent started with dedicated fork');
+
+        this.emit('fork:created', {
+          type: 'fork:created',
+          timestamp: new Date(),
+          agentId,
+          data: fork,
+        } as OrchestratorEvent);
+      } else {
+        // Use shared main database (no fork)
+        agent.pool = this.mainPool;
+        logger.info({ agentId }, 'Agent started with shared database (no fork)');
+      }
 
       // Update status
       agent.status = 'running';
@@ -254,24 +273,17 @@ export class MultiAgentOrchestrator extends EventEmitter {
         `UPDATE neurobase_agents
          SET status = $1, fork_id = $2, updated_at = NOW()
          WHERE id = $3`,
-        [agent.status, fork.id, agentId]
+        [agent.status, agent.fork?.id || null, agentId]
       );
 
       this.emit('agent:started', {
         type: 'agent:started',
         timestamp: new Date(),
         agentId,
-        data: { fork },
+        data: { fork: agent.fork, useFork },
       } as OrchestratorEvent);
 
-      this.emit('fork:created', {
-        type: 'fork:created',
-        timestamp: new Date(),
-        agentId,
-        data: fork,
-      } as OrchestratorEvent);
-
-      logger.info({ agentId, forkId: fork.id }, 'Agent started successfully');
+      logger.info({ agentId, useFork }, 'Agent started successfully');
     } catch (error) {
       agent.status = 'error';
       this.emit('agent:error', {

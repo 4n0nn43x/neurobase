@@ -396,14 +396,7 @@ Features:
 
 ## 🧪 Examples
 
-See `examples/` directory:
-- `multi-agent-demo.ts` - Complete multi-agent demo
-- More examples coming soon
-
-Run demo:
-```bash
-npx tsx examples/multi-agent-demo.ts
-```
+Examples coming soon.
 
 ---
 
