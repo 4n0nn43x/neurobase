@@ -1258,7 +1258,7 @@
                         </span>
                         <div class="agent-actions">
                             ${agent.status === 'running' ? `
-                                <button class="icon-btn" onclick="openTaskModal('${agent.id}', '${agent.name}')" title="Submit Task">
+                                <button class="icon-btn" onclick="openTaskModal('${agent.id}', '${agent.name}', '${agent.type}')" title="Submit Task">
                                     <i class="fas fa-tasks"></i>
                                 </button>
                                 <button class="icon-btn" onclick="stopAgent('${agent.id}')" title="Stop Agent">
@@ -1605,9 +1605,53 @@
         };
 
         // Open Task Modal
-        function openTaskModal(agentId, agentName) {
+        // Map agent types to task types
+        const agentTypeToTaskType = {
+            'schema-evolution': 'analyze-schema',
+            'query-validator': 'validate-query',
+            'learning-aggregator': 'aggregate-learning',
+            'ab-testing': 'run-experiment',
+            'custom': 'custom'
+        };
+
+        function openTaskModal(agentId, agentName, agentType) {
             document.getElementById('taskAgentId').value = agentId;
             document.getElementById('taskAgentName').value = agentName;
+
+            // Auto-select task type based on agent type
+            const taskTypeSelect = document.getElementById('taskType');
+            const taskType = agentTypeToTaskType[agentType] || 'custom';
+            taskTypeSelect.value = taskType;
+
+            // Hide task type selector and show info instead
+            const taskTypeGroup = taskTypeSelect.closest('.form-group');
+            taskTypeGroup.style.display = 'none';
+
+            // Show info about auto-selected task type
+            let infoDiv = document.getElementById('taskTypeInfo');
+            if (!infoDiv) {
+                infoDiv = document.createElement('div');
+                infoDiv.id = 'taskTypeInfo';
+                infoDiv.className = 'form-group';
+                taskTypeGroup.parentNode.insertBefore(infoDiv, taskTypeGroup.nextSibling);
+            }
+
+            const taskTypeLabels = {
+                'analyze-schema': 'Analyze Schema',
+                'validate-query': 'Validate Query',
+                'optimize-query': 'Optimize Query',
+                'aggregate-learning': 'Aggregate Learning',
+                'run-experiment': 'Run Experiment',
+                'custom': 'Custom Task'
+            };
+
+            infoDiv.innerHTML = `
+                <label class="form-label">Task Type</label>
+                <div style="padding: 12px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; color: var(--accent-blue);">
+                    <i class="fas fa-info-circle"></i> ${taskTypeLabels[taskType]} (auto-selected based on agent type: ${agentType})
+                </div>
+            `;
+
             document.getElementById('taskModal').classList.add('show');
 
             // Set default template
@@ -1618,6 +1662,17 @@
         function closeTaskModal() {
             document.getElementById('taskModal').classList.remove('show');
             document.getElementById('taskForm').reset();
+
+            // Reset task type visibility
+            const taskTypeSelect = document.getElementById('taskType');
+            const taskTypeGroup = taskTypeSelect.closest('.form-group');
+            taskTypeGroup.style.display = 'block';
+
+            // Remove info div if exists
+            const infoDiv = document.getElementById('taskTypeInfo');
+            if (infoDiv) {
+                infoDiv.remove();
+            }
         }
 
         // Task Details Modal Functions
