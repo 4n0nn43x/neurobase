@@ -16,6 +16,7 @@ import { MultiAgentOrchestrator, AgentConfig } from './orchestrator/multi-agent-
 import { ForkSynchronizer, SyncConfig } from './orchestrator/fork-synchronizer';
 import { MonitoringDashboard } from './dashboard/monitor';
 import { DatabaseForkManager } from './database/fork';
+import { TaskProcessor } from './workers/task-processor';
 
 const app = express();
 const port = config.neurobase.port || 3000;
@@ -64,6 +65,7 @@ let orchestrator: MultiAgentOrchestrator;
 let synchronizer: ForkSynchronizer;
 let dashboard: MonitoringDashboard;
 let forkManager: DatabaseForkManager;
+let taskProcessor: TaskProcessor;
 let mainPool: Pool;
 
 /**
@@ -96,6 +98,10 @@ async function initializeSystem(): Promise<void> {
   dashboard = new MonitoringDashboard(orchestrator, synchronizer);
   dashboard.setupRoutes(app);
   dashboard.startMonitoring();
+
+  // Initialize and start task processor
+  taskProcessor = new TaskProcessor(mainPool);
+  taskProcessor.start(5000); // Process tasks every 5 seconds
 
   logger.info('Multi-Agent System initialized successfully');
 }
@@ -632,9 +638,15 @@ async function start() {
 process.on('SIGINT', async () => {
   logger.info('Shutting down Multi-Agent System');
 
+  // Stop task processor first
+  if (taskProcessor) {
+    taskProcessor.stop();
+  }
+
+  // Shutdown orchestrator (which also closes mainPool)
   await orchestrator.shutdown();
   await synchronizer.shutdown();
-  await mainPool.end();
+  // Note: mainPool is already closed by orchestrator.shutdown()
 
   process.exit(0);
 });
