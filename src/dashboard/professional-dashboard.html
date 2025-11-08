@@ -758,6 +758,18 @@
             <div id="resource-chart" class="chart-container"></div>
         </div>
 
+        <!-- Recent Tasks -->
+        <div class="card" style="grid-column: span 4;">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-tasks"></i> Recent Tasks
+                </h3>
+            </div>
+            <div id="task-list" style="max-height: 400px; overflow-y: auto;">
+                <!-- Tasks will be inserted here -->
+            </div>
+        </div>
+
         <!-- Event Timeline -->
         <div class="card" style="grid-column: span 4;">
             <div class="card-header">
@@ -870,6 +882,64 @@
                     <button type="button" class="btn btn-secondary" onclick="closeNewAgentModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-plus"></i> Create Agent
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Submit Task Modal -->
+    <div id="taskModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">
+                    <i class="fas fa-tasks"></i> Submit Task to Agent
+                </h2>
+                <button class="modal-close" onclick="closeTaskModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="taskForm" onsubmit="submitTask(event)">
+                <input type="hidden" id="taskAgentId">
+
+                <div class="form-group">
+                    <label class="form-label">Agent</label>
+                    <input type="text" class="form-input" id="taskAgentName" disabled>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Task Type *</label>
+                    <select class="form-select" id="taskType" required onchange="updateTaskTemplate()">
+                        <option value="">Select task type...</option>
+                        <option value="analyze-schema">Analyze Schema - Analyze database structure and suggest improvements</option>
+                        <option value="validate-query">Validate Query - Check SQL query for safety and performance</option>
+                        <option value="optimize-query">Optimize Query - Improve query performance</option>
+                        <option value="aggregate-learning">Aggregate Learning - Collect and synthesize insights</option>
+                        <option value="run-experiment">Run Experiment - Execute A/B test</option>
+                        <option value="custom">Custom Task - Define your own task</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Task Payload (JSON) *</label>
+                    <textarea class="form-input" id="taskPayload" rows="8" required placeholder='{"key": "value"}'></textarea>
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+                        Enter task parameters as JSON
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Priority (1-10)</label>
+                    <input type="number" class="form-input" id="taskPriority" min="1" max="10" value="5">
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+                        1 = Low, 5 = Normal, 10 = High
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeTaskModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-paper-plane"></i> Submit Task
                     </button>
                 </div>
             </form>
@@ -1113,15 +1183,17 @@
         // Real-time Data Updates
         async function fetchDashboardData() {
             try {
-                const [metrics, events, agents] = await Promise.all([
+                const [metrics, events, agents, tasks] = await Promise.all([
                     fetch('/api/dashboard/metrics').then(r => r.json()),
                     fetch('/api/dashboard/events?limit=10').then(r => r.json()),
-                    fetch('/api/dashboard/agents').then(r => r.json())
+                    fetch('/api/dashboard/agents').then(r => r.json()),
+                    fetch('/api/tasks?limit=20').then(r => r.json())
                 ]);
 
                 updateStatCards(metrics);
                 updateAgentList(agents);
                 updateEventTimeline(events);
+                updateTaskList(tasks.tasks || []);
                 updateCharts(metrics);
             } catch (error) {
                 console.error('Error fetching dashboard data:', error);
@@ -1164,13 +1236,16 @@
                             ${agent.status}
                         </span>
                         <div class="agent-actions">
-                            ${agent.status !== 'running' ? `
-                                <button class="icon-btn" onclick="startAgent('${agent.id}')" title="Start Agent">
-                                    <i class="fas fa-play"></i>
+                            ${agent.status === 'running' ? `
+                                <button class="icon-btn" onclick="openTaskModal('${agent.id}', '${agent.name}')" title="Submit Task">
+                                    <i class="fas fa-tasks"></i>
                                 </button>
-                            ` : `
                                 <button class="icon-btn" onclick="stopAgent('${agent.id}')" title="Stop Agent">
                                     <i class="fas fa-stop"></i>
+                                </button>
+                            ` : `
+                                <button class="icon-btn" onclick="startAgent('${agent.id}')" title="Start Agent">
+                                    <i class="fas fa-play"></i>
                                 </button>
                             `}
                             <button class="icon-btn danger" onclick="deleteAgent('${agent.id}')" title="Delete Agent">
@@ -1180,6 +1255,49 @@
                     </div>
                 </div>
             `).join('');
+        }
+
+        function updateTaskList(tasks) {
+            const taskList = document.getElementById('task-list');
+
+            if (!tasks || tasks.length === 0) {
+                taskList.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                        <i class="fas fa-tasks" style="font-size: 48px; opacity: 0.3; margin-bottom: 16px;"></i>
+                        <p>No tasks submitted yet</p>
+                    </div>
+                `;
+                return;
+            }
+
+            taskList.innerHTML = tasks.map(task => {
+                const statusColors = {
+                    'pending': 'var(--accent-yellow)',
+                    'running': 'var(--accent-blue)',
+                    'completed': 'var(--accent-green)',
+                    'failed': 'var(--accent-red)'
+                };
+
+                const statusColor = statusColors[task.status] || 'var(--text-secondary)';
+                const createdTime = new Date(task.created_at).toLocaleString();
+
+                return `
+                    <div class="event-item" style="border-left: 3px solid ${statusColor}; padding-left: 12px;">
+                        <div class="event-content">
+                            <div class="event-title" style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>${task.task_type}</span>
+                                <span style="font-size: 11px; color: ${statusColor}; font-weight: 600; text-transform: uppercase;">
+                                    ${task.status}
+                                </span>
+                            </div>
+                            <div class="event-time" style="font-size: 11px;">
+                                Agent: ${task.agent_id?.substring(0, 20)}...
+                            </div>
+                            <div class="event-time">${createdTime}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
         }
 
         function updateEventTimeline(events) {
@@ -1302,13 +1420,6 @@
             timestampGroup.style.display = e.target.value === 'to-timestamp' ? 'block' : 'none';
         });
 
-        // Close modal when clicking outside
-        window.addEventListener('click', function(e) {
-            const modal = document.getElementById('newAgentModal');
-            if (e.target === modal) {
-                closeNewAgentModal();
-            }
-        });
 
         // Create Agent Function
         async function createAgent(event) {
@@ -1431,6 +1542,124 @@
                 alert(`❌ Failed to delete agent: ${error.message}`);
             }
         }
+
+        // ============================================================================
+        // TASK SUBMISSION FUNCTIONS
+        // ============================================================================
+
+        // Task templates for different types
+        const taskTemplates = {
+            'analyze-schema': {
+                tables: ["table1", "table2"],
+                operation: "optimization",
+                focus: ["indexes", "constraints"]
+            },
+            'validate-query': {
+                sql: "SELECT * FROM users WHERE id = 1",
+                checkPerformance: true
+            },
+            'optimize-query': {
+                sql: "SELECT * FROM orders WHERE created_at > NOW() - INTERVAL '1 day'",
+                suggestIndexes: true
+            },
+            'aggregate-learning': {
+                timeframe: "7 days",
+                includeMetrics: true
+            },
+            'run-experiment': {
+                name: "My Experiment",
+                strategies: ["strategy_a", "strategy_b"],
+                duration: "1 hour"
+            },
+            'custom': {
+                action: "custom_action",
+                parameters: {}
+            }
+        };
+
+        // Open Task Modal
+        function openTaskModal(agentId, agentName) {
+            document.getElementById('taskAgentId').value = agentId;
+            document.getElementById('taskAgentName').value = agentName;
+            document.getElementById('taskModal').classList.add('show');
+
+            // Set default template
+            updateTaskTemplate();
+        }
+
+        // Close Task Modal
+        function closeTaskModal() {
+            document.getElementById('taskModal').classList.remove('show');
+            document.getElementById('taskForm').reset();
+        }
+
+        // Update task template based on selected type
+        function updateTaskTemplate() {
+            const taskType = document.getElementById('taskType').value;
+            const payloadField = document.getElementById('taskPayload');
+
+            if (taskType && taskTemplates[taskType]) {
+                payloadField.value = JSON.stringify(taskTemplates[taskType], null, 2);
+            }
+        }
+
+        // Submit Task
+        async function submitTask(event) {
+            event.preventDefault();
+
+            const agentId = document.getElementById('taskAgentId').value;
+            const taskType = document.getElementById('taskType').value;
+            const payloadText = document.getElementById('taskPayload').value;
+            const priority = parseInt(document.getElementById('taskPriority').value);
+
+            // Validate JSON
+            let payload;
+            try {
+                payload = JSON.parse(payloadText);
+            } catch (error) {
+                alert('❌ Invalid JSON in payload. Please check your syntax.');
+                return;
+            }
+
+            const taskData = {
+                taskType: taskType,
+                payload: payload,
+                priority: priority
+            };
+
+            try {
+                const response = await fetch(`/api/agents/${agentId}/tasks`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(taskData)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`✅ Task submitted successfully!\n\nTask ID: ${result.taskId}\n\nYou can check the task status in the API or wait for the agent to process it.`);
+                    closeTaskModal();
+                    updateDashboard();
+                } else {
+                    alert(`❌ Error: ${result.error}`);
+                }
+            } catch (error) {
+                alert(`❌ Failed to submit task: ${error.message}`);
+            }
+        }
+
+        // Close modals when clicking outside
+        window.addEventListener('click', function(e) {
+            const newAgentModal = document.getElementById('newAgentModal');
+            const taskModal = document.getElementById('taskModal');
+
+            if (e.target === newAgentModal) {
+                closeNewAgentModal();
+            }
+            if (e.target === taskModal) {
+                closeTaskModal();
+            }
+        });
 
         // ============================================================================
         // AUTO-REFRESH

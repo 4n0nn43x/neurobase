@@ -367,6 +367,20 @@ export class MultiAgentOrchestrator extends EventEmitter {
   }
 
   /**
+   * Get all tasks
+   */
+  async getAllTasks(limit: number = 50, agentId?: string): Promise<any[]> {
+    const query = agentId
+      ? `SELECT * FROM neurobase_agent_tasks WHERE agent_id = $1 ORDER BY created_at DESC LIMIT $2`
+      : `SELECT * FROM neurobase_agent_tasks ORDER BY created_at DESC LIMIT $1`;
+
+    const params = agentId ? [agentId, limit] : [limit];
+    const result = await this.mainPool.query(query, params);
+
+    return result.rows;
+  }
+
+  /**
    * Get task status
    */
   async getTaskStatus(taskId: string): Promise<any> {

@@ -277,6 +277,26 @@ app.post('/api/agents/:agentId/tasks', async (req: Request, res: Response, next:
 });
 
 /**
+ * Get all tasks
+ * GET /api/tasks
+ */
+app.get('/api/tasks', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const agentId = req.query.agentId as string;
+
+    const tasks = await orchestrator.getAllTasks(limit, agentId);
+
+    res.json({
+      success: true,
+      tasks,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * Get task status
  * GET /api/tasks/:taskId
  */
