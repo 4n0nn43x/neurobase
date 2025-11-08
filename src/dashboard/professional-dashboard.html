@@ -438,6 +438,201 @@
             min-width: 18px;
             text-align: center;
         }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            animation: fadeIn 0.3s;
+        }
+
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            animation: slideUp 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(30px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .modal-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 4px 8px;
+            transition: color 0.2s;
+        }
+
+        .modal-close:hover {
+            color: var(--text-primary);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .form-input,
+        .form-select {
+            width: 100%;
+            padding: 12px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus,
+        .form-select:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .form-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .form-checkbox input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 24px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--gradient-2);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border-color);
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+            border: 1px solid var(--accent-red);
+        }
+
+        .btn-danger:hover {
+            background: var(--accent-red);
+            color: white;
+        }
+
+        .agent-actions {
+            display: flex;
+            gap: 8px;
+            margin-left: 12px;
+        }
+
+        .icon-btn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 6px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 12px;
+        }
+
+        .icon-btn:hover {
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
+
+        .icon-btn.danger:hover {
+            border-color: var(--accent-red);
+            color: var(--accent-red);
+        }
     </style>
 </head>
 <body>
@@ -534,7 +729,7 @@
                     <i class="fas fa-robot"></i> Active Agents
                     <span class="notification-badge" id="agent-count">0</span>
                 </h3>
-                <button class="action-btn" style="padding: 6px 12px; font-size: 12px;">
+                <button class="action-btn" style="padding: 6px 12px; font-size: 12px;" onclick="openNewAgentModal()">
                     <i class="fas fa-plus"></i> New Agent
                 </button>
             </div>
@@ -603,6 +798,81 @@
                     <span>Last Sync:</span> <strong id="last-sync">Never</strong>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- New Agent Modal -->
+    <div id="newAgentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">
+                    <i class="fas fa-robot"></i> Create New Agent
+                </h2>
+                <button class="modal-close" onclick="closeNewAgentModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="newAgentForm" onsubmit="createAgent(event)">
+                <div class="form-group">
+                    <label class="form-label">Agent Name *</label>
+                    <input type="text" class="form-input" id="agentName" required placeholder="e.g., Schema Evolution Agent">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Agent Type *</label>
+                    <select class="form-select" id="agentType" required>
+                        <option value="">Select agent type...</option>
+                        <option value="schema-evolution">Schema Evolution - Analyzes and optimizes database structure</option>
+                        <option value="query-validator">Query Validator - Validates queries for safety and performance</option>
+                        <option value="learning-aggregator">Learning Aggregator - Aggregates knowledge across agents</option>
+                        <option value="ab-testing">A/B Testing - Tests multiple strategies in parallel</option>
+                        <option value="custom">Custom - General purpose agent</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-checkbox">
+                        <input type="checkbox" id="useFork">
+                        <span>Use dedicated Tiger Data fork (requires paid plan)</span>
+                    </label>
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-left: 28px;">
+                        ⚠️ Free plan: Leave unchecked (shared database mode)
+                    </div>
+                </div>
+
+                <div id="forkOptions" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label">Fork Strategy</label>
+                        <select class="form-select" id="forkStrategy">
+                            <option value="now">Now - Fork at current database state</option>
+                            <option value="last-snapshot">Last Snapshot - Fork at last existing snapshot (faster)</option>
+                            <option value="to-timestamp">To Timestamp - Fork at specific point in time</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="timestampGroup" style="display: none;">
+                        <label class="form-label">Timestamp (RFC3339)</label>
+                        <input type="text" class="form-input" id="timestamp" placeholder="2025-01-15T10:30:00Z">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">CPU (millicores, optional)</label>
+                        <input type="number" class="form-input" id="cpu" placeholder="2000">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Memory (GB, optional)</label>
+                        <input type="number" class="form-input" id="memory" placeholder="8">
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeNewAgentModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Create Agent
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -889,9 +1159,25 @@
                         <div class="agent-name">${agent.name}</div>
                         <div class="agent-type">${agent.type}</div>
                     </div>
-                    <span class="agent-status status-${agent.status}">
-                        ${agent.status}
-                    </span>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span class="agent-status status-${agent.status}">
+                            ${agent.status}
+                        </span>
+                        <div class="agent-actions">
+                            ${agent.status !== 'running' ? `
+                                <button class="icon-btn" onclick="startAgent('${agent.id}')" title="Start Agent">
+                                    <i class="fas fa-play"></i>
+                                </button>
+                            ` : `
+                                <button class="icon-btn" onclick="stopAgent('${agent.id}')" title="Stop Agent">
+                                    <i class="fas fa-stop"></i>
+                                </button>
+                            `}
+                            <button class="icon-btn danger" onclick="deleteAgent('${agent.id}')" title="Delete Agent">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             `).join('');
         }
@@ -988,6 +1274,167 @@
 
         // Auto-refresh every 15 seconds (reduced from 5 to improve performance)
         setInterval(updateDashboard, 15000);
+
+        // ============================================================================
+        // MODAL AND AGENT MANAGEMENT FUNCTIONS
+        // ============================================================================
+
+        // Modal Functions
+        function openNewAgentModal() {
+            document.getElementById('newAgentModal').classList.add('show');
+        }
+
+        function closeNewAgentModal() {
+            document.getElementById('newAgentModal').classList.remove('show');
+            document.getElementById('newAgentForm').reset();
+            document.getElementById('forkOptions').style.display = 'none';
+        }
+
+        // Toggle fork options visibility
+        document.getElementById('useFork')?.addEventListener('change', function(e) {
+            const forkOptions = document.getElementById('forkOptions');
+            forkOptions.style.display = e.target.checked ? 'block' : 'none';
+        });
+
+        // Toggle timestamp input based on strategy
+        document.getElementById('forkStrategy')?.addEventListener('change', function(e) {
+            const timestampGroup = document.getElementById('timestampGroup');
+            timestampGroup.style.display = e.target.value === 'to-timestamp' ? 'block' : 'none';
+        });
+
+        // Close modal when clicking outside
+        window.addEventListener('click', function(e) {
+            const modal = document.getElementById('newAgentModal');
+            if (e.target === modal) {
+                closeNewAgentModal();
+            }
+        });
+
+        // Create Agent Function
+        async function createAgent(event) {
+            event.preventDefault();
+
+            const name = document.getElementById('agentName').value;
+            const type = document.getElementById('agentType').value;
+            const useFork = document.getElementById('useFork').checked;
+
+            const agentData = {
+                name,
+                type,
+                enabled: true,
+                useFork: useFork
+            };
+
+            if (useFork) {
+                const strategy = document.getElementById('forkStrategy').value;
+                agentData.forkStrategy = strategy;
+
+                if (strategy === 'to-timestamp') {
+                    agentData.timestamp = document.getElementById('timestamp').value;
+                }
+
+                const cpu = document.getElementById('cpu').value;
+                const memory = document.getElementById('memory').value;
+
+                if (cpu) agentData.cpu = cpu;
+                if (memory) agentData.memory = memory;
+            }
+
+            try {
+                const response = await fetch('/api/agents/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(agentData)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`✅ Agent "${name}" created successfully!`);
+                    closeNewAgentModal();
+                    // Refresh dashboard
+                    updateDashboard();
+                } else {
+                    alert(`❌ Error: ${result.error}`);
+                }
+            } catch (error) {
+                alert(`❌ Failed to create agent: ${error.message}`);
+            }
+        }
+
+        // Start Agent
+        async function startAgent(agentId) {
+            if (!confirm('Start this agent?')) return;
+
+            try {
+                const response = await fetch(`/api/agents/${agentId}/start`, {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('✅ Agent started successfully!');
+                    updateDashboard();
+                } else {
+                    alert(`❌ Error: ${result.error}`);
+                }
+            } catch (error) {
+                alert(`❌ Failed to start agent: ${error.message}`);
+            }
+        }
+
+        // Stop Agent
+        async function stopAgent(agentId) {
+            if (!confirm('Stop this agent?')) return;
+
+            try {
+                const response = await fetch(`/api/agents/${agentId}/stop`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ deleteFork: false })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('✅ Agent stopped successfully!');
+                    updateDashboard();
+                } else {
+                    alert(`❌ Error: ${result.error}`);
+                }
+            } catch (error) {
+                alert(`❌ Failed to stop agent: ${error.message}`);
+            }
+        }
+
+        // Delete Agent
+        async function deleteAgent(agentId) {
+            if (!confirm('⚠️ Delete this agent? This action cannot be undone.')) return;
+
+            try {
+                const response = await fetch(`/api/agents/${agentId}/stop`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ deleteFork: true })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('✅ Agent deleted successfully!');
+                    updateDashboard();
+                } else {
+                    alert(`❌ Error: ${result.error}`);
+                }
+            } catch (error) {
+                alert(`❌ Failed to delete agent: ${error.message}`);
+            }
+        }
+
+        // ============================================================================
+        // AUTO-REFRESH
+        // ============================================================================
 
         // Update charts with real data every 10 seconds (reduced from 3)
         setInterval(() => {

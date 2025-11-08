@@ -37,6 +37,7 @@ app.use(helmet({
         "https://cdn.jsdelivr.net",
         "https://cdn.tailwindcss.com"
       ],
+      scriptSrcAttr: ["'unsafe-inline'"], // Allow inline event handlers (onclick, etc.)
       connectSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "https:"],
       fontSrc: [
