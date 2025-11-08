@@ -946,6 +946,27 @@
         </div>
     </div>
 
+    <!-- Task Details Modal -->
+    <div id="taskDetailsModal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h3>
+                    <i class="fas fa-info-circle"></i>
+                    Task Details
+                </h3>
+                <button type="button" class="btn-close" onclick="closeTaskDetailsModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div id="taskDetailsContent" style="padding: 24px;">
+                <!-- Task details will be populated here -->
+            </div>
+            <div class="form-actions" style="margin-top: 0; border-top: 1px solid var(--border-color); padding-top: 16px;">
+                <button type="button" class="btn btn-secondary" onclick="closeTaskDetailsModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ApexCharts Configuration and Data Loading -->
     <script>
         // Chart Theme Configuration
@@ -1294,6 +1315,12 @@
                                 Agent: ${task.agent_id?.substring(0, 20)}...
                             </div>
                             <div class="event-time">${createdTime}</div>
+                            <div style="margin-top: 8px;">
+                                <button class="btn btn-sm" onclick='viewTaskDetails(${JSON.stringify(task).replace(/'/g, "&#39;")})'
+                                        style="font-size: 11px; padding: 4px 12px; background: var(--accent-blue); border: none;">
+                                    <i class="fas fa-eye"></i> View Details
+                                </button>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -1591,6 +1618,107 @@
         function closeTaskModal() {
             document.getElementById('taskModal').classList.remove('show');
             document.getElementById('taskForm').reset();
+        }
+
+        // Task Details Modal Functions
+        function viewTaskDetails(task) {
+            const modal = document.getElementById('taskDetailsModal');
+            const content = document.getElementById('taskDetailsContent');
+
+            const statusColors = {
+                'pending': 'var(--accent-yellow)',
+                'running': 'var(--accent-blue)',
+                'completed': 'var(--accent-green)',
+                'failed': 'var(--accent-red)'
+            };
+
+            const statusColor = statusColors[task.status] || 'var(--text-secondary)';
+
+            // Format dates
+            const createdAt = task.created_at ? new Date(task.created_at).toLocaleString() : 'N/A';
+            const startedAt = task.started_at ? new Date(task.started_at).toLocaleString() : 'N/A';
+            const completedAt = task.completed_at ? new Date(task.completed_at).toLocaleString() : 'N/A';
+
+            // Build the details HTML
+            let detailsHTML = `
+                <div style="display: grid; gap: 16px;">
+                    <div>
+                        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Task ID</div>
+                        <div style="font-family: 'Courier New', monospace; font-size: 13px;">${task.id}</div>
+                    </div>
+
+                    <div>
+                        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Agent ID</div>
+                        <div style="font-family: 'Courier New', monospace; font-size: 13px;">${task.agent_id || 'N/A'}</div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div>
+                            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Task Type</div>
+                            <div style="font-weight: 600;">${task.task_type}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Status</div>
+                            <div style="color: ${statusColor}; font-weight: 600; text-transform: uppercase;">${task.status}</div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div>
+                            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Priority</div>
+                            <div>${task.priority || 5}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Created At</div>
+                            <div style="font-size: 13px;">${createdAt}</div>
+                        </div>
+                    </div>
+
+                    ${task.started_at ? `
+                        <div>
+                            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Started At</div>
+                            <div style="font-size: 13px;">${startedAt}</div>
+                        </div>
+                    ` : ''}
+
+                    ${task.completed_at ? `
+                        <div>
+                            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Completed At</div>
+                            <div style="font-size: 13px;">${completedAt}</div>
+                        </div>
+                    ` : ''}
+
+                    <div>
+                        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Payload</div>
+                        <pre style="background: #1a1d3a; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 12px; margin: 0;">${JSON.stringify(task.payload, null, 2)}</pre>
+                    </div>
+
+                    ${task.result ? `
+                        <div>
+                            <div style="font-size: 12px; color: var(--accent-green); margin-bottom: 4px; font-weight: 600;">
+                                <i class="fas fa-check-circle"></i> Result
+                            </div>
+                            <pre style="background: #1a1d3a; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 12px; margin: 0; border-left: 3px solid var(--accent-green);">${JSON.stringify(task.result, null, 2)}</pre>
+                        </div>
+                    ` : ''}
+
+                    ${task.error ? `
+                        <div>
+                            <div style="font-size: 12px; color: var(--accent-red); margin-bottom: 4px; font-weight: 600;">
+                                <i class="fas fa-exclamation-circle"></i> Error
+                            </div>
+                            <pre style="background: #1a1d3a; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 12px; margin: 0; border-left: 3px solid var(--accent-red);">${task.error}</pre>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+
+            content.innerHTML = detailsHTML;
+            modal.classList.add('show');
+        }
+
+        function closeTaskDetailsModal() {
+            document.getElementById('taskDetailsModal').classList.remove('show');
         }
 
         // Update task template based on selected type

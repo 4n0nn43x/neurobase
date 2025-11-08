@@ -309,9 +309,13 @@ export class MultiAgentOrchestrator extends EventEmitter {
     logger.info({ agentId, deleteFork }, 'Stopping agent');
 
     try {
-      // Close connection pool
-      if (agent.pool) {
+      // Close connection pool only if it's a dedicated fork pool, not the shared mainPool
+      if (agent.pool && agent.fork) {
+        // This agent has a dedicated fork with its own pool
         await agent.pool.end();
+        agent.pool = undefined;
+      } else if (agent.pool) {
+        // This agent uses the shared mainPool, just unset the reference
         agent.pool = undefined;
       }
 
