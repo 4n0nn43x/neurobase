@@ -436,6 +436,242 @@ function displayQueryResults(result: any): void {
 }
 
 /**
+ * Helper function to pluralize table names intelligently
+ */
+function pluralize(singular: string): string {
+  // Common irregular plurals
+  const irregularPlurals: Record<string, string> = {
+    'category': 'categories',
+    'person': 'people',
+    'child': 'children',
+    'man': 'men',
+    'woman': 'women',
+    'tooth': 'teeth',
+    'foot': 'feet',
+    'mouse': 'mice',
+    'goose': 'geese',
+  };
+
+  // Check for irregular plural
+  if (irregularPlurals[singular.toLowerCase()]) {
+    return irregularPlurals[singular.toLowerCase()];
+  }
+
+  // Regular pluralization rules
+  if (singular.endsWith('y')) {
+    // "company" -> "companies"
+    return singular.slice(0, -1) + 'ies';
+  } else if (singular.endsWith('s') || singular.endsWith('ss') ||
+             singular.endsWith('sh') || singular.endsWith('ch') ||
+             singular.endsWith('x') || singular.endsWith('z')) {
+    // "class" -> "classes", "box" -> "boxes"
+    return singular + 'es';
+  } else if (singular.endsWith('f')) {
+    // "leaf" -> "leaves"
+    return singular.slice(0, -1) + 'ves';
+  } else if (singular.endsWith('fe')) {
+    // "knife" -> "knives"
+    return singular.slice(0, -2) + 'ves';
+  } else {
+    // Default: just add 's'
+    return singular + 's';
+  }
+}
+
+/**
+ * Intelligent placeholder value collection with foreign key detection and fuzzy matching
+ */
+async function collectPlaceholderValue(
+  db: any,
+  placeholder: string,
+  _sql: string
+): Promise<string> {
+  // Detect if this is a foreign key (e.g., category_id, user_id)
+  const foreignKeyPattern = /^(\w+)_id$/;
+  const fkMatch = placeholder.match(foreignKeyPattern);
+
+  if (fkMatch) {
+    const referencedTable = pluralize(fkMatch[1]); // e.g., "category" -> "categories"
+
+    // Try to get existing values from the referenced table
+    try {
+      const result = await db.query(`
+        SELECT id, name
+        FROM ${referencedTable}
+        ORDER BY name
+        LIMIT 50
+      `);
+
+      if (result.rows.length > 0) {
+        // Show existing options with ability to create new
+        console.log(chalk.cyan(`\n📋 Available ${referencedTable}:\n`));
+
+        const choices = result.rows.map((row: any) => ({
+          name: `${row.name} (ID: ${row.id})`,
+          value: row.id.toString(),
+          short: row.name,
+        }));
+
+        // Add options to create new or enter custom ID
+        choices.push(new inquirer.Separator());
+        choices.push({
+          name: chalk.green(`➕ Create new ${fkMatch[1]}`),
+          value: '__CREATE_NEW__',
+          short: 'Create new',
+        });
+        choices.push({
+          name: chalk.gray('⌨️  Enter custom ID manually'),
+          value: '__CUSTOM_ID__',
+          short: 'Custom ID',
+        });
+
+        const { selection } = await inquirer.prompt<{ selection: string }>([
+          {
+            type: 'list',
+            name: 'selection',
+            message: `Select ${placeholder}:`,
+            choices,
+            pageSize: 15,
+          },
+        ]);
+
+        if (selection === '__CREATE_NEW__') {
+          // Create new entry in the referenced table
+          return await createNewReferenceEntry(db, referencedTable, fkMatch[1]);
+        } else if (selection === '__CUSTOM_ID__') {
+          const { customId } = await inquirer.prompt<{ customId: string }>([
+            {
+              type: 'input',
+              name: 'customId',
+              message: `Enter ${placeholder} (numeric ID):`,
+              validate: (input: string) => {
+                if (!input.trim()) return 'ID cannot be empty';
+                if (isNaN(Number(input))) return 'ID must be a number';
+                return true;
+              },
+            },
+          ]);
+          return customId;
+        } else {
+          return selection;
+        }
+      }
+    } catch (error) {
+      // Table might not exist or query failed, fall through to manual input
+      console.log(chalk.yellow(`⚠️  Could not fetch ${referencedTable}, entering manually`));
+    }
+  }
+
+  // For non-foreign-key fields or if FK detection failed
+  const { value } = await inquirer.prompt<{ value: string }>([
+    {
+      type: 'input',
+      name: 'value',
+      message: `Enter value for ${placeholder}:`,
+      validate: (input: string) => input.trim() !== '' || 'Value cannot be empty',
+    },
+  ]);
+
+  return value;
+}
+
+/**
+ * Create a new entry in a referenced table (e.g., new category)
+ */
+async function createNewReferenceEntry(
+  db: any,
+  tableName: string,
+  singularName: string
+): Promise<string> {
+  console.log(chalk.blue(`\n➕ Creating new ${singularName}:\n`));
+
+  // Collect name
+  const { name } = await inquirer.prompt<{ name: string }>([
+    {
+      type: 'input',
+      name: 'name',
+      message: `${singularName.charAt(0).toUpperCase() + singularName.slice(1)} name:`,
+      validate: (input: string) => input.trim() !== '' || 'Name cannot be empty',
+    },
+  ]);
+
+  // Check for similar existing entries using fuzzy matching
+  try {
+    const similarResult = await db.query(`
+      SELECT id, name,
+             SIMILARITY(LOWER(name), LOWER($1)) as similarity
+      FROM ${tableName}
+      WHERE LOWER(name) LIKE LOWER($1) || '%'
+         OR LOWER($1) LIKE LOWER(name) || '%'
+         OR SIMILARITY(LOWER(name), LOWER($1)) > 0.3
+      ORDER BY similarity DESC
+      LIMIT 5
+    `, [name]);
+
+    if (similarResult.rows.length > 0) {
+      console.log(chalk.yellow(`\n⚠️  Found similar ${tableName}:\n`));
+
+      const choices = similarResult.rows.map((row: any) => ({
+        name: `Use existing: ${row.name} (ID: ${row.id}) [${Math.round(row.similarity * 100)}% match]`,
+        value: row.id.toString(),
+        short: row.name,
+      }));
+
+      choices.push(new inquirer.Separator());
+      choices.push({
+        name: chalk.green(`Create new "${name}" anyway`),
+        value: '__CREATE_NEW__',
+        short: 'Create new',
+      });
+
+      const { choice } = await inquirer.prompt<{ choice: string }>([
+        {
+          type: 'list',
+          name: 'choice',
+          message: 'What would you like to do?',
+          choices,
+        },
+      ]);
+
+      if (choice !== '__CREATE_NEW__') {
+        return choice;
+      }
+    }
+  } catch (error) {
+    // SIMILARITY function might not be available, continue with creation
+    console.log(chalk.gray('(Fuzzy matching not available, creating new entry)'));
+  }
+
+  // Collect optional description
+  const { description } = await inquirer.prompt<{ description: string }>([
+    {
+      type: 'input',
+      name: 'description',
+      message: 'Description (optional):',
+      default: '',
+    },
+  ]);
+
+  // Insert the new entry
+  try {
+    const insertQuery = description
+      ? `INSERT INTO ${tableName} (name, description) VALUES ($1, $2) RETURNING id`
+      : `INSERT INTO ${tableName} (name) VALUES ($1) RETURNING id`;
+
+    const params = description ? [name, description] : [name];
+    const result = await db.query(insertQuery, params);
+
+    const newId = result.rows[0].id;
+    console.log(chalk.green(`\n✓ Created new ${singularName}: ${name} (ID: ${newId})\n`));
+
+    return newId.toString();
+  } catch (error: any) {
+    console.error(chalk.red(`\n❌ Failed to create ${singularName}: ${error.message}\n`));
+    throw error;
+  }
+}
+
+/**
  * Handle clarification needed for ambiguous queries
  */
 async function handleClarificationNeeded(
@@ -493,19 +729,76 @@ async function handleClarificationNeeded(
     const selectedInterpretation = linguisticResult.suggestedInterpretations[selectedIndex];
     console.log(chalk.green(`\n✓ Selected: ${selectedInterpretation.description}\n`));
 
-    // Execute the selected SQL
+    // Check if the selected SQL contains placeholders (e.g., [price], [category_id])
+    const placeholderPattern = /\[(\w+)\]/g;
+    const placeholdersFound = selectedInterpretation.sql.match(placeholderPattern);
+
+    let finalSQL = selectedInterpretation.sql;
+
+    if (placeholdersFound && placeholdersFound.length > 0) {
+      // SQL contains placeholders, need to collect values intelligently
+      console.log(chalk.yellow('\n⚠️  This query requires additional information:\n'));
+
+      const collectedValues: Record<string, string> = {};
+
+      // Extract unique placeholder names
+      const placeholderNames: string[] = Array.from(
+        new Set(placeholdersFound.map((p: string) => p.replace(/[\[\]]/g, '')))
+      );
+
+      const db = (nb as any).db;
+
+      for (const placeholder of placeholderNames) {
+        const value = await collectPlaceholderValue(db, placeholder, selectedInterpretation.sql);
+        collectedValues[placeholder] = value;
+      }
+
+      // Replace all placeholders with collected values
+      finalSQL = selectedInterpretation.sql;
+      for (const [placeholder, value] of Object.entries(collectedValues)) {
+        // Properly quote the value if it's not a number
+        const quotedValue = isNaN(Number(value)) && value !== 'true' && value !== 'false'
+          ? `'${value.replace(/'/g, "''")}'`
+          : value;
+
+        finalSQL = finalSQL.replace(
+          new RegExp(`\\[${placeholder}\\]`, 'g'),
+          quotedValue
+        );
+      }
+
+      console.log(chalk.blue('\n📝 Final SQL:'));
+      console.log(chalk.gray(formatSQL(finalSQL)));
+
+      // Ask for confirmation
+      const { confirm } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'confirm',
+          message: 'Execute this query?',
+          default: true,
+        },
+      ]);
+
+      if (!confirm) {
+        console.log(chalk.yellow('\nQuery cancelled.\n'));
+        return;
+      }
+    }
+
+    // Execute the final SQL
     const spinner = ora('Executing query...').start();
     try {
       const db = (nb as any).db;
       const startTime = Date.now();
-      const dbResult = await db.query(selectedInterpretation.sql);
+      const dbResult = await db.query(finalSQL);
       const executionTime = Date.now() - startTime;
 
       spinner.stop();
 
       displayQueryResults({
         data: dbResult.rows,
-        sql: selectedInterpretation.sql,
+        sql: finalSQL,
         executionTime,
         rowCount: dbResult.rowCount,
         learned: false,
@@ -514,7 +807,7 @@ async function handleClarificationNeeded(
       // Add to conversation history
       conversationHistory.push({
         query: originalQuery,
-        sql: selectedInterpretation.sql,
+        sql: finalSQL,
         timestamp: new Date(),
       });
       if (conversationHistory.length > 10) {

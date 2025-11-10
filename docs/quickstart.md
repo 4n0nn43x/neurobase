@@ -2,6 +2,9 @@
 
 Get started with NeuroBase in 5 minutes!
 
+
+**{% embed https://youtu.be/fCqL_s2971k %}**
+
 ---
 
 ## Prerequisites
