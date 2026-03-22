@@ -3,7 +3,8 @@
  */
 
 import { Config, NaturalLanguageQuery, QueryResult, EventHandler, NeuroBaseEvent } from '../types';
-import { DatabaseConnection } from '../database/connection';
+import { DatabaseAdapter } from '../database/adapter';
+import { AdapterFactory } from '../database/adapter-factory';
 import { SchemaIntrospector } from '../database/schema';
 import { LLMFactory, BaseLLMProvider } from '../llm';
 import { LinguisticAgent } from '../agents/linguistic';
@@ -21,21 +22,19 @@ function uuidv4(): string {
 
 export class NeuroBase {
   private config: Config;
-  private db: DatabaseConnection;
+  private db: DatabaseAdapter;
   private schema: SchemaIntrospector;
   private llm: BaseLLMProvider;
   private linguisticAgent: LinguisticAgent;
   private optimizerAgent: OptimizerAgent;
   private memoryAgent: MemoryAgent;
   private eventHandlers: EventHandler[] = [];
-  // @ts-expect-error - Reserved for future conversation context tracking
-  private _conversationContext: Map<string, any[]> = new Map();
 
   constructor(config: Config) {
     this.config = config;
 
-    // Initialize database connection
-    this.db = new DatabaseConnection(config.tiger);
+    // Initialize database adapter
+    this.db = AdapterFactory.create(config.database);
 
     // Initialize schema introspector
     this.schema = new SchemaIntrospector(this.db);
@@ -44,13 +43,14 @@ export class NeuroBase {
     this.llm = LLMFactory.create(config.llm);
 
     // Initialize agents
-    this.linguisticAgent = new LinguisticAgent(this.llm);
+    this.linguisticAgent = new LinguisticAgent(this.llm, this.db);
     this.optimizerAgent = new OptimizerAgent(this.db, this.llm);
     this.memoryAgent = new MemoryAgent(this.db, this.llm);
 
     logger.debug({
       mode: config.neurobase.mode,
       llmProvider: config.llm.provider,
+      dbEngine: config.database.engine,
     }, 'NeuroBase initialized');
   }
 
@@ -60,7 +60,8 @@ export class NeuroBase {
   async initialize(): Promise<void> {
     logger.debug('Starting NeuroBase initialization');
 
-    // Test database connection
+    // Connect and test database
+    await this.db.connect();
     const connected = await this.db.testConnection();
     if (!connected) {
       throw new Error('Failed to connect to database');
@@ -148,7 +149,7 @@ export class NeuroBase {
 
       // Step 3: Execute query
       const result = await this.db.query(finalSQL, undefined, {
-        timeout: this.config.security.maxQueryTime,
+        timeout: this.config.security.maxQueryTime
       });
 
       const executionTime = Date.now() - startTime;
@@ -314,14 +315,14 @@ export class NeuroBase {
    * Close all connections
    */
   async close(): Promise<void> {
-    await this.db.close();
+    await this.db.disconnect();
     logger.debug('NeuroBase closed');
   }
 
   /**
-   * Get the database connection (for advanced usage)
+   * Get the database adapter (for advanced usage)
    */
-  getDatabase(): DatabaseConnection {
+  getDatabase(): DatabaseAdapter {
     return this.db;
   }
 

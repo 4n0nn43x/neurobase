@@ -9,15 +9,18 @@ import {
   LearningEntry,
   MissingColumnInfo,
 } from '../types';
+import { DatabaseAdapter } from '../database/adapter';
 import { BaseLLMProvider } from '../llm';
 import { logger } from '../utils/logger';
 
 export class LinguisticAgent implements Agent {
   name = 'LinguisticAgent';
   private llm: BaseLLMProvider;
+  private adapter?: DatabaseAdapter;
 
-  constructor(llm: BaseLLMProvider) {
+  constructor(llm: BaseLLMProvider, adapter?: DatabaseAdapter) {
     this.llm = llm;
+    this.adapter = adapter;
   }
 
   /**
@@ -97,11 +100,18 @@ export class LinguisticAgent implements Agent {
       return await (this.llm as any).generateSQL(query, schema, examples, conversationContext);
     }
 
+    // Get dialect info from adapter
+    const dialectName = this.adapter?.getDialectName() || 'PostgreSQL';
+    const dialectHints = this.adapter?.getDialectHints();
+    const dialectTips = dialectHints ? dialectHints.tips.join('\n- ') : '';
+    const paramStyle = dialectHints?.parameterStyle || '$1, $2, $3';
+
     // Fallback to generic completion
     const messages = [
       {
         role: 'system' as const,
-        content: `You are an elite PostgreSQL expert with deep natural language understanding. You intelligently handle both conversational interactions and SQL query generation.
+        content: `You are an elite ${dialectName} expert with deep natural language understanding. You intelligently handle both conversational interactions and SQL query generation.
+${dialectTips ? `\n# DIALECT-SPECIFIC TIPS\n- ${dialectTips}\n- Use ${paramStyle} for parameterized queries\n` : ''}
 
 # DATABASE SCHEMA
 ${schema}

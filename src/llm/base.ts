@@ -37,9 +37,13 @@ export abstract class BaseLLMProvider {
     query: string,
     schema: string,
     examples?: string,
-    conversationContext?: string
+    conversationContext?: string,
+    dialectName?: string,
+    dialectHints?: string
   ): LLMMessage[] {
-    const systemPrompt = `You are an elite PostgreSQL database expert and natural language understanding specialist. Your mission is to translate human language queries into precise, performant SQL while maintaining deep contextual awareness of ongoing conversations.
+    const dbDialect = dialectName || 'PostgreSQL';
+    const systemPrompt = `You are an elite ${dbDialect} database expert and natural language understanding specialist. Your mission is to translate human language queries into precise, performant SQL while maintaining deep contextual awareness of ongoing conversations.
+${dialectHints ? `\n# DIALECT-SPECIFIC GUIDELINES\n${dialectHints}\n` : ''}
 
 # DATABASE SCHEMA
 ${schema}

@@ -2,16 +2,14 @@
  * Core type definitions for NeuroBase
  */
 
+import { DatabaseConfig } from '../database/adapter';
+
 export interface Config {
-  tiger: TigerConfig;
+  database: DatabaseConfig;
   llm: LLMConfig;
   neurobase: NeuroBaseConfig;
   features: FeatureFlags;
   security: SecurityConfig;
-}
-
-export interface TigerConfig {
-  connectionString: string;
 }
 
 export interface LLMConfig {

@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { NeuroBase } from './core/neurobase';
 import { config } from './config';
+import { AdapterFactory } from './database/adapter-factory';
 import { DatabaseForkManager } from './database/fork';
 
 const program = new Command();
@@ -1128,7 +1129,9 @@ async function showStats(): Promise<void> {
  */
 async function createFork(): Promise<void> {
   try {
-    const forkManager = new DatabaseForkManager();
+    const adapter = AdapterFactory.create(config.database);
+    await adapter.connect();
+    const forkManager = new DatabaseForkManager(adapter);
 
     console.log(chalk.blue('\n🍴 Create Database Fork\n'));
     console.log(chalk.gray('Create a copy of your database for safe testing and experimentation.\n'));
@@ -1156,10 +1159,8 @@ async function createFork(): Promise<void> {
       },
     ]);
 
-    let timestamp: string | undefined;
-
     if (strategy === 'to-timestamp') {
-      const { timestampInput } = await inquirer.prompt([
+      await inquirer.prompt([
         {
           type: 'input',
           name: 'timestampInput',
@@ -1174,7 +1175,6 @@ async function createFork(): Promise<void> {
           },
         },
       ]);
-      timestamp = timestampInput;
     }
 
     // Ask for optional name
@@ -1189,11 +1189,16 @@ async function createFork(): Promise<void> {
 
     const spinner = ora('Creating database fork...').start();
 
+    // Map legacy strategy names to adapter strategies
+    const strategyMap: Record<string, 'snapshot' | 'copy' | 'template'> = {
+      'now': 'template',
+      'last-snapshot': 'snapshot',
+      'to-timestamp': 'copy',
+    };
+
     const fork = await forkManager.createFork({
-      strategy: strategy as 'now' | 'last-snapshot' | 'to-timestamp',
-      timestamp,
+      strategy: strategyMap[strategy] || 'template',
       name: name || undefined,
-      waitForCompletion: true,
     });
 
     spinner.succeed('Database fork created successfully');
@@ -1216,10 +1221,12 @@ async function createFork(): Promise<void> {
  */
 async function listForks(): Promise<void> {
   try {
-    const forkManager = new DatabaseForkManager();
-    const spinner = ora('Loading database services...').start();
+    const adapter = AdapterFactory.create(config.database);
+    await adapter.connect();
+    const forkManager = new DatabaseForkManager(adapter);
+    const spinner = ora('Loading database forks...').start();
 
-    const services = await forkManager.listServices();
+    const services = await forkManager.listForks();
 
     spinner.stop();
 
@@ -1245,7 +1252,7 @@ async function listForks(): Promise<void> {
     });
 
     for (const service of services) {
-      const isFork = !!service.parentServiceId;
+      const isFork = !!(service as any).parentId;
       table.push([
         service.id,
         service.name,
@@ -1269,7 +1276,9 @@ async function listForks(): Promise<void> {
  */
 async function deleteFork(forkId: string): Promise<void> {
   try {
-    const forkManager = new DatabaseForkManager();
+    const adapter = AdapterFactory.create(config.database);
+    await adapter.connect();
+    const forkManager = new DatabaseForkManager(adapter);
 
     // Confirm deletion
     const { confirm } = await inquirer.prompt([

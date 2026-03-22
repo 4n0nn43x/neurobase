@@ -15,7 +15,6 @@ import { logger } from './utils/logger';
 import { MultiAgentOrchestrator, AgentConfig } from './orchestrator/multi-agent-orchestrator';
 import { ForkSynchronizer, SyncConfig } from './orchestrator/fork-synchronizer';
 import { MonitoringDashboard } from './dashboard/monitor';
-import { DatabaseForkManager } from './database/fork';
 import { TaskProcessor } from './workers/task-processor';
 
 const app = express();
@@ -64,7 +63,6 @@ app.use('/api/', limiter);
 let orchestrator: MultiAgentOrchestrator;
 let synchronizer: ForkSynchronizer;
 let dashboard: MonitoringDashboard;
-let forkManager: DatabaseForkManager;
 let taskProcessor: TaskProcessor;
 let mainPool: Pool;
 
@@ -76,17 +74,13 @@ async function initializeSystem(): Promise<void> {
 
   // Create main database pool
   mainPool = new Pool({
-    connectionString: config.tiger.connectionString,
+    connectionString: config.database.connectionString,
     max: 20,
   });
 
-  // Initialize fork manager
-  forkManager = new DatabaseForkManager();
-
   // Initialize orchestrator
   orchestrator = new MultiAgentOrchestrator(
-    config.tiger.connectionString,
-    forkManager.getCurrentServiceId()
+    config.database.connectionString
   );
 
   await orchestrator.initialize();

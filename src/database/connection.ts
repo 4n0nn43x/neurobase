@@ -1,166 +1,58 @@
 /**
- * Database connection management for Tiger Cloud
+ * DatabaseConnection - Backward-compatible facade
+ * Delegates to DatabaseAdapter for actual operations
+ *
+ * @deprecated Use DatabaseAdapter directly via AdapterFactory
  */
 
-import { Pool, PoolClient, QueryResult } from 'pg';
-import { TigerConfig } from '../types';
-import { logger } from '../utils/logger';
+import { DatabaseAdapter, DatabaseConfig, DBQueryResult } from './adapter';
+import { AdapterFactory } from './adapter-factory';
 
 export class DatabaseConnection {
-  private pool: Pool;
-  // @ts-expect-error - Config stored for potential future use
-  private _config: TigerConfig;
+  private adapter: DatabaseAdapter;
+  private connected = false;
 
-  constructor(config: TigerConfig) {
-    this._config = config;
-
-    // Parse connection string to remove conflicting SSL params
-    const cleanConnectionString = config.connectionString.replace(/[?&]sslmode=[^&]*/, '');
-
-    this.pool = new Pool({
-      connectionString: cleanConnectionString,
-      max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000,
-      ssl: {
-        rejectUnauthorized: false, // Accept self-signed certs from Tiger Cloud
-        // Tiger Cloud uses self-signed certificates which is safe for their managed service
-      },
-    });
-
-    this.pool.on('error', (err) => {
-      logger.error({ err }, 'Unexpected database pool error');
-    });
+  constructor(config: DatabaseConfig) {
+    this.adapter = AdapterFactory.create(config);
   }
 
-  /**
-   * Execute a query
-   */
-  // @ts-expect-error - Generic type T kept for API compatibility
+  async ensureConnected(): Promise<void> {
+    if (!this.connected) {
+      await this.adapter.connect();
+      this.connected = true;
+    }
+  }
+
   async query<T = any>(
     sql: string,
     params?: any[],
     options?: { timeout?: number }
-  ): Promise<QueryResult<any>> {
-    const startTime = Date.now();
-    const client = await this.pool.connect();
-
-    try {
-      // Set statement timeout if provided
-      if (options?.timeout) {
-        await client.query(`SET statement_timeout = ${options.timeout}`);
-      }
-
-      const result = await client.query(sql, params);
-      const duration = Date.now() - startTime;
-
-      logger.debug({
-        sql: sql.substring(0, 100),
-        duration,
-        rows: result.rowCount,
-      }, 'Query executed');
-
-      return result;
-    } catch (error) {
-      logger.error({
-        sql: sql.substring(0, 100),
-        error,
-      }, 'Query execution failed');
-      throw error;
-    } finally {
-      client.release();
-    }
+  ): Promise<DBQueryResult<T>> {
+    await this.ensureConnected();
+    return this.adapter.query<T>(sql, params, options);
   }
 
-  /**
-   * Execute a query with EXPLAIN ANALYZE
-   */
   async explainQuery(sql: string, params?: any[]): Promise<any[]> {
-    const explainSQL = `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${sql}`;
-    const result = await this.query(explainSQL, params);
-    return result.rows[0]['QUERY PLAN'];
+    await this.ensureConnected();
+    return this.adapter.explain(sql, params);
   }
 
-  /**
-   * Get a client from the pool for transactions
-   */
-  async getClient(): Promise<PoolClient> {
-    return this.pool.connect();
-  }
-
-  /**
-   * Execute a transaction
-   */
-  async transaction<T>(
-    callback: (client: PoolClient) => Promise<T>
-  ): Promise<T> {
-    const client = await this.pool.connect();
-
-    try {
-      await client.query('BEGIN');
-      const result = await callback(client);
-      await client.query('COMMIT');
-      return result;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  /**
-   * Test the database connection
-   */
   async testConnection(): Promise<boolean> {
-    try {
-      const result = await this.query('SELECT NOW() as current_time');
-      logger.debug({
-        time: result.rows[0].current_time,
-      }, 'Database connection successful');
-      return true;
-    } catch (error) {
-      logger.error({ error }, 'Database connection failed');
-      return false;
-    }
+    await this.ensureConnected();
+    return this.adapter.testConnection();
   }
 
-  /**
-   * Get database statistics
-   */
-  async getDatabaseStats(): Promise<{
-    size: string;
-    tables: number;
-    connections: number;
-  }> {
-    const sizeResult = await this.query(`
-      SELECT pg_size_pretty(pg_database_size(current_database())) as size
-    `);
-
-    const tablesResult = await this.query(`
-      SELECT COUNT(*) as count
-      FROM information_schema.tables
-      WHERE table_schema = 'public'
-    `);
-
-    const connectionsResult = await this.query(`
-      SELECT COUNT(*) as count
-      FROM pg_stat_activity
-      WHERE datname = current_database()
-    `);
-
-    return {
-      size: sizeResult.rows[0].size,
-      tables: parseInt(tablesResult.rows[0].count),
-      connections: parseInt(connectionsResult.rows[0].count),
-    };
+  async getDatabaseStats(): Promise<{ size: string; tables: number; connections: number }> {
+    await this.ensureConnected();
+    return this.adapter.getDatabaseStats();
   }
 
-  /**
-   * Close all connections
-   */
   async close(): Promise<void> {
-    await this.pool.end();
-    logger.debug('Database pool closed');
+    await this.adapter.disconnect();
+    this.connected = false;
+  }
+
+  getAdapter(): DatabaseAdapter {
+    return this.adapter;
   }
 }

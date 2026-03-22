@@ -11,17 +11,17 @@ import {
   OptimizationSuggestion,
   PerformanceMetrics,
 } from '../types';
-import { DatabaseConnection } from '../database/connection';
+import { DatabaseAdapter } from '../database/adapter';
 import { BaseLLMProvider } from '../llm';
 import { logger } from '../utils/logger';
 
 export class OptimizerAgent implements Agent {
   name = 'OptimizerAgent';
-  private db: DatabaseConnection;
+  private db: DatabaseAdapter;
   private llm: BaseLLMProvider;
   private performanceThreshold: number = 1000; // ms
 
-  constructor(db: DatabaseConnection, llm: BaseLLMProvider) {
+  constructor(db: DatabaseAdapter, llm: BaseLLMProvider) {
     this.db = db;
     this.llm = llm;
   }
@@ -107,7 +107,7 @@ export class OptimizerAgent implements Agent {
    */
   private async getExecutionPlan(sql: string): Promise<ExecutionPlan> {
     try {
-      const planData = await this.db.explainQuery(sql);
+      const planData = await this.db.explain(sql);
 
       if (!planData || planData.length === 0) {
         throw new Error('Empty execution plan');

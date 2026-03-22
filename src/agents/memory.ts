@@ -9,11 +9,10 @@ import {
   LearningEntry,
   Correction,
 } from '../types';
-import { DatabaseConnection } from '../database/connection';
+import { DatabaseAdapter } from '../database/adapter';
 import { BaseLLMProvider } from '../llm';
 import { logger } from '../utils/logger';
 import { embeddingService } from '../utils/embeddings';
-import pgvector from 'pgvector/pg';
 
 function uuidv4(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -25,12 +24,12 @@ function uuidv4(): string {
 
 export class MemoryAgent implements Agent {
   name = 'MemoryAgent';
-  private db: DatabaseConnection;
+  private db: DatabaseAdapter;
   // @ts-expect-error - LLM provider reserved for future use
   private _llm: BaseLLMProvider;
   private embeddingCache: Map<string, number[]> = new Map();
 
-  constructor(db: DatabaseConnection, llm: BaseLLMProvider) {
+  constructor(db: DatabaseAdapter, llm: BaseLLMProvider) {
     this.db = db;
     this._llm = llm;
   }
@@ -39,11 +38,17 @@ export class MemoryAgent implements Agent {
    * Parse a PostgreSQL vector string to array of numbers
    */
   private parseVector(vectorStr: string): number[] {
-    // Remove brackets and split by comma
     return vectorStr
       .substring(1, vectorStr.length - 1)
       .split(',')
       .map((v) => parseFloat(v));
+  }
+
+  /**
+   * Convert a number array to PostgreSQL vector literal
+   */
+  private vectorToSql(vector: number[]): string {
+    return `[${vector.join(',')}]`;
   }
 
   /**
@@ -90,7 +95,7 @@ export class MemoryAgent implements Agent {
         entry.embedding = await this.generateEmbedding(entry.naturalLanguage);
       }
 
-      // Store in database using pgvector
+      // Store in database
       await this.db.query(
         `
         INSERT INTO neurobase_learning_history
@@ -112,7 +117,7 @@ export class MemoryAgent implements Agent {
           entry.timestamp,
           entry.success,
           entry.corrected,
-          entry.embedding ? pgvector.toSql(entry.embedding) : null,
+          entry.embedding ? this.vectorToSql(entry.embedding) : null,
           entry.context ? JSON.stringify(entry.context) : null,
         ]
       );
@@ -133,15 +138,13 @@ export class MemoryAgent implements Agent {
   private async retrieveSimilar(query: string): Promise<MemoryAgentOutput> {
     logger.debug({
       query: query.substring(0, 50),
-    }, 'Retrieving similar queries using hybrid search (pgvector + BM25)');
+    }, 'Retrieving similar queries using vector search');
 
     try {
       // Generate embedding for the query
       const queryEmbedding = await this.generateEmbedding(query);
 
-      // Hybrid Search using Reciprocal Rank Fusion (RRF)
-      // Combines semantic search (pgvector) + keyword search (BM25)
-      // This is a Tiger Data Agentic Postgres feature!
+      // Semantic search using pgvector cosine distance
       const result = await this.db.query<{
         id: string;
         natural_language: string;
@@ -152,61 +155,32 @@ export class MemoryAgent implements Agent {
         corrected: boolean;
         embedding: string;
         context: string | null;
-        combined_score: number;
-        vector_rank: number | null;
-        keyword_rank: number | null;
+        distance: number;
       }>(
         `
-        WITH vector_search AS (
-          -- Semantic search using pgvector
-          SELECT
-            id,
-            ROW_NUMBER() OVER (ORDER BY embedding <=> $1) AS rank
-          FROM neurobase_learning_history
-          WHERE success = true AND corrected = false AND embedding IS NOT NULL
-          ORDER BY embedding <=> $1
-          LIMIT 20
-        ),
-        keyword_search AS (
-          -- Keyword search using BM25 (Tiger Data pg_textsearch)
-          SELECT
-            id,
-            ROW_NUMBER() OVER (
-              ORDER BY natural_language <@> to_bm25query($2, 'idx_learning_history_bm25')
-            ) AS rank
-          FROM neurobase_learning_history
-          WHERE success = true AND corrected = false
-          ORDER BY natural_language <@> to_bm25query($2, 'idx_learning_history_bm25')
-          LIMIT 20
-        )
         SELECT
-          h.id,
-          h.natural_language,
-          h.sql,
-          h.user_id,
-          h.timestamp,
-          h.success,
-          h.corrected,
-          h.embedding::text,
-          h.context,
-          -- Reciprocal Rank Fusion (RRF) formula: combine both scores
-          COALESCE(1.0 / (60 + v.rank), 0.0) + COALESCE(1.0 / (60 + k.rank), 0.0) AS combined_score,
-          v.rank AS vector_rank,
-          k.rank AS keyword_rank
-        FROM neurobase_learning_history h
-        LEFT JOIN vector_search v ON h.id = v.id
-        LEFT JOIN keyword_search k ON h.id = k.id
-        WHERE v.id IS NOT NULL OR k.id IS NOT NULL
-        ORDER BY combined_score DESC
-        LIMIT 5
+          id,
+          natural_language,
+          sql,
+          user_id,
+          timestamp,
+          success,
+          corrected,
+          embedding::text,
+          context,
+          embedding <=> $1 AS distance
+        FROM neurobase_learning_history
+        WHERE success = true AND corrected = false AND embedding IS NOT NULL
+        ORDER BY embedding <=> $1
+        LIMIT 10
       `,
-        [pgvector.toSql(queryEmbedding), query]
+        [this.vectorToSql(queryEmbedding)]
       );
 
       logger.debug({
         resultsCount: result.rows.length,
-        topScore: result.rows[0]?.combined_score,
-      }, 'Hybrid search completed');
+        topDistance: result.rows[0]?.distance,
+      }, 'Vector search completed');
 
       const relevantEntries = result.rows.map((row) => ({
         id: row.id,
@@ -220,17 +194,16 @@ export class MemoryAgent implements Agent {
         context: row.context ? JSON.parse(row.context) : undefined,
       }));
 
-      // Filter by combined score threshold
-      // RRF scores typically range from 0 to ~0.03, so we use a lower threshold
+      // Filter by distance threshold (lower = more similar)
       const similarQueries = relevantEntries.filter((_, idx) => {
-        const score = result.rows[idx].combined_score;
-        return score > 0.015; // Threshold for RRF combined score
+        const distance = result.rows[idx].distance;
+        return distance < 0.5;
       });
 
       logger.debug({
         totalRelevant: relevantEntries.length,
         similarCount: similarQueries.length,
-      }, 'Filtered results by RRF score');
+      }, 'Filtered results by distance');
 
       return {
         success: true,
@@ -238,7 +211,7 @@ export class MemoryAgent implements Agent {
         similarQueries,
       };
     } catch (error) {
-      logger.error({ error }, 'Failed to retrieve similar queries with hybrid search');
+      logger.error({ error }, 'Failed to retrieve similar queries');
       return { success: false };
     }
   }
@@ -443,10 +416,7 @@ export class MemoryAgent implements Agent {
       -- Enable pgvector extension for semantic search
       CREATE EXTENSION IF NOT EXISTS vector;
 
-      -- Enable pg_textsearch extension for BM25 keyword search (Tiger Data Agentic Postgres)
-      CREATE EXTENSION IF NOT EXISTS pg_textsearch;
-
-      -- Learning history table with hybrid search support (pgvector + BM25)
+      -- Learning history table with vector search support
       CREATE TABLE IF NOT EXISTS neurobase_learning_history (
         id TEXT PRIMARY KEY,
         natural_language TEXT NOT NULL,
@@ -455,8 +425,8 @@ export class MemoryAgent implements Agent {
         timestamp TIMESTAMP NOT NULL,
         success BOOLEAN NOT NULL DEFAULT true,
         corrected BOOLEAN NOT NULL DEFAULT false,
-        embedding vector(384), -- pgvector for embeddings (384 dimensions for all-MiniLM-L6-v2)
-        context TEXT -- JSON object
+        embedding vector(384),
+        context TEXT
       );
 
       CREATE INDEX IF NOT EXISTS idx_learning_history_timestamp
@@ -466,17 +436,16 @@ export class MemoryAgent implements Agent {
         ON neurobase_learning_history(user_id)
         WHERE user_id IS NOT NULL;
 
-      -- Create vector similarity index for fast semantic search (pgvector)
+      -- HNSW index for vector search (better recall than IVFFlat, no minimum rows)
       CREATE INDEX IF NOT EXISTS idx_learning_history_embedding
         ON neurobase_learning_history
-        USING ivfflat (embedding vector_cosine_ops)
-        WITH (lists = 100);
+        USING hnsw (embedding vector_cosine_ops)
+        WITH (m = 16, ef_construction = 64);
 
-      -- Create BM25 index for keyword search (Tiger Data pg_textsearch)
-      CREATE INDEX IF NOT EXISTS idx_learning_history_bm25
+      -- Full-text search index
+      CREATE INDEX IF NOT EXISTS idx_learning_history_fts
         ON neurobase_learning_history
-        USING bm25(natural_language)
-        WITH (text_config='english');
+        USING gin(to_tsvector('english', natural_language));
 
       CREATE TABLE IF NOT EXISTS neurobase_corrections (
         id TEXT PRIMARY KEY,

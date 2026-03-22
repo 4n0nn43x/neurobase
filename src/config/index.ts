@@ -30,9 +30,21 @@ function getEnvVarBoolean(key: string, defaultValue: boolean): boolean {
 export function loadConfig(): Config {
   const llmProvider = getEnvVar('LLM_PROVIDER', 'openai') as 'openai' | 'anthropic' | 'ollama';
 
+  const dbEngine = (getEnvVar('DB_ENGINE', 'postgresql') as 'postgresql' | 'mysql' | 'sqlite' | 'mongodb');
+
   const config: Config = {
-    tiger: {
+    database: {
+      engine: dbEngine,
       connectionString: getEnvVar('DATABASE_URL'),
+      ssl: {
+        enabled: getEnvVarBoolean('DB_SSL_ENABLED', true),
+        rejectUnauthorized: getEnvVarBoolean('DB_SSL_REJECT_UNAUTHORIZED', true),
+      },
+      pool: {
+        max: getEnvVarNumber('DB_POOL_MAX', 20),
+        idleTimeoutMillis: getEnvVarNumber('DB_POOL_IDLE_TIMEOUT', 30000),
+        connectionTimeoutMillis: getEnvVarNumber('DB_POOL_CONNECTION_TIMEOUT', 10000),
+      },
     },
     llm: {
       provider: llmProvider,

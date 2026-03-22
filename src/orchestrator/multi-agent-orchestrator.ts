@@ -3,10 +3,17 @@
  * Manages multiple specialized agents working in parallel on separate database forks
  */
 
-import { DatabaseForkManager, ForkInfo } from '../database/fork';
 import { logger } from '../utils/logger';
 import { Pool } from 'pg';
 import { EventEmitter } from 'events';
+
+export interface ForkInfo {
+  id: string;
+  name: string;
+  status: string;
+  createdAt: string;
+  parentId?: string;
+}
 
 export interface AgentConfig {
   name: string;
@@ -42,16 +49,14 @@ export interface OrchestratorEvent {
 }
 
 export class MultiAgentOrchestrator extends EventEmitter {
-  private forkManager: DatabaseForkManager;
   private agents: Map<string, AgentInstance>;
   private mainPool: Pool;
   private isInitialized: boolean = false;
   private eventHistory: OrchestratorEvent[] = [];
   private maxEventHistory: number = 1000;
 
-  constructor(mainConnectionString: string, serviceId?: string) {
+  constructor(mainConnectionString: string) {
     super();
-    this.forkManager = new DatabaseForkManager(serviceId);
     this.agents = new Map();
     this.mainPool = new Pool({
       connectionString: mainConnectionString,
@@ -226,43 +231,10 @@ export class MultiAgentOrchestrator extends EventEmitter {
     logger.info({ agentId, agentType: agent.config.type }, 'Starting agent');
 
     try {
-      // Check if agent should use a fork or shared database
-      const useFork = agent.config.useFork !== false && agent.config.forkStrategy !== 'shared';
-
-      if (useFork) {
-        // Create database fork for this agent
-        const fork = await this.forkManager.createFork({
-          name: `${agent.config.name}-fork`,
-          strategy: agent.config.forkStrategy || 'now',
-          cpu: agent.config.cpu,
-          memory: agent.config.memory,
-          waitForCompletion: true,
-        });
-
-        agent.fork = fork;
-
-        // Get connection string for the fork
-        const forkConnectionString = await this.forkManager.getForkConnectionString(fork.id);
-
-        // Create connection pool for this agent's fork
-        agent.pool = new Pool({
-          connectionString: forkConnectionString,
-          max: 5,
-        });
-
-        logger.info({ agentId, forkId: fork.id }, 'Agent started with dedicated fork');
-
-        this.emit('fork:created', {
-          type: 'fork:created',
-          timestamp: new Date(),
-          agentId,
-          data: fork,
-        } as OrchestratorEvent);
-      } else {
-        // Use shared main database (no fork)
-        agent.pool = this.mainPool;
-        logger.info({ agentId }, 'Agent started with shared database (no fork)');
-      }
+      // All agents use the shared main database pool
+      // Fork support is handled via the DatabaseAdapter.createFork() when needed
+      agent.pool = this.mainPool;
+      logger.info({ agentId }, 'Agent started with shared database');
 
       // Update status
       agent.status = 'running';
@@ -280,10 +252,10 @@ export class MultiAgentOrchestrator extends EventEmitter {
         type: 'agent:started',
         timestamp: new Date(),
         agentId,
-        data: { fork: agent.fork, useFork },
+        data: {},
       } as OrchestratorEvent);
 
-      logger.info({ agentId, useFork }, 'Agent started successfully');
+      logger.info({ agentId }, 'Agent started successfully');
     } catch (error) {
       agent.status = 'error';
       this.emit('agent:error', {
@@ -309,20 +281,8 @@ export class MultiAgentOrchestrator extends EventEmitter {
     logger.info({ agentId, deleteFork }, 'Stopping agent');
 
     try {
-      // Close connection pool only if it's a dedicated fork pool, not the shared mainPool
-      if (agent.pool && agent.fork) {
-        // This agent has a dedicated fork with its own pool
-        await agent.pool.end();
-        agent.pool = undefined;
-      } else if (agent.pool) {
-        // This agent uses the shared mainPool, just unset the reference
-        agent.pool = undefined;
-      }
-
-      // Delete fork if requested
-      if (deleteFork && agent.fork) {
-        await this.forkManager.deleteFork(agent.fork.id);
-      }
+      // Unset the pool reference (shared pool, don't close it)
+      agent.pool = undefined;
 
       agent.status = 'stopped';
 
