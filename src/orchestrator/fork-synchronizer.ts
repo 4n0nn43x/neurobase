@@ -45,6 +45,16 @@ export class ForkSynchronizer {
   }
 
   /**
+   * Safely quote an identifier to prevent SQL injection
+   */
+  private quoteIdentifier(name: string): string {
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+      throw new Error(`Invalid identifier: ${name}`);
+    }
+    return `"${name}"`;
+  }
+
+  /**
    * Register a fork for synchronization
    */
   registerFork(forkId: string, connectionString: string): void {
@@ -247,7 +257,7 @@ export class ForkSynchronizer {
     logger.debug({ tableName }, 'Performing full sync');
 
     // Get all data from source
-    const sourceData = await sourcePool.query(`SELECT * FROM ${tableName}`);
+    const sourceData = await sourcePool.query(`SELECT * FROM ${this.quoteIdentifier(tableName)}`);
 
     if (sourceData.rows.length === 0) {
       return 0;
@@ -257,7 +267,7 @@ export class ForkSynchronizer {
     const columns = Object.keys(sourceData.rows[0]);
 
     // Clear target table (be careful!)
-    await targetPool.query(`TRUNCATE TABLE ${tableName} CASCADE`);
+    await targetPool.query(`TRUNCATE TABLE ${this.quoteIdentifier(tableName)} CASCADE`);
 
     // Insert all rows
     let inserted = 0;
@@ -265,8 +275,9 @@ export class ForkSynchronizer {
       const values = columns.map(col => row[col]);
       const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
 
+      const quotedCols = columns.map(c => this.quoteIdentifier(c)).join(', ');
       await targetPool.query(
-        `INSERT INTO ${tableName} (${columns.join(', ')})
+        `INSERT INTO ${this.quoteIdentifier(tableName)} (${quotedCols})
          VALUES (${placeholders})`,
         values
       );
@@ -294,18 +305,21 @@ export class ForkSynchronizer {
       throw new Error(`No timestamp column found for incremental sync on ${tableName}`);
     }
 
+    const qTable = this.quoteIdentifier(tableName);
+    const qTimestamp = this.quoteIdentifier(strategy.timestampColumn);
+
     // Get last sync timestamp from target
     const lastSyncResult = await targetPool.query(
-      `SELECT MAX(${strategy.timestampColumn}) as last_sync FROM ${tableName}`
+      `SELECT MAX(${qTimestamp}) as last_sync FROM ${qTable}`
     );
 
     const lastSync = lastSyncResult.rows[0]?.last_sync || '1970-01-01';
 
     // Get new/updated records from source
     const sourceData = await sourcePool.query(
-      `SELECT * FROM ${tableName}
-       WHERE ${strategy.timestampColumn} > $1
-       ORDER BY ${strategy.timestampColumn}`,
+      `SELECT * FROM ${qTable}
+       WHERE ${qTimestamp} > $1
+       ORDER BY ${qTimestamp}`,
       [lastSync]
     );
 
@@ -316,19 +330,21 @@ export class ForkSynchronizer {
     // Upsert records into target
     const columns = Object.keys(sourceData.rows[0]);
     let synced = 0;
+    const qPK = this.quoteIdentifier(strategy.primaryKey);
 
     for (const row of sourceData.rows) {
       const values = columns.map(col => row[col]);
       const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+      const quotedCols = columns.map(c => this.quoteIdentifier(c)).join(', ');
       const updates = columns
         .filter(col => col !== strategy.primaryKey)
-        .map(col => `${col} = EXCLUDED.${col}`)
+        .map(col => `${this.quoteIdentifier(col)} = EXCLUDED.${this.quoteIdentifier(col)}`)
         .join(', ');
 
       await targetPool.query(
-        `INSERT INTO ${tableName} (${columns.join(', ')})
+        `INSERT INTO ${qTable} (${quotedCols})
          VALUES (${placeholders})
-         ON CONFLICT (${strategy.primaryKey})
+         ON CONFLICT (${qPK})
          DO UPDATE SET ${updates}`,
         values
       );
@@ -353,10 +369,11 @@ export class ForkSynchronizer {
   ): Promise<number> {
     logger.debug({ tableName }, 'Performing selective sync');
 
+    const qTable = this.quoteIdentifier(tableName);
     const filter = strategy.filter || '';
 
-    // Get filtered data from source
-    const query = `SELECT * FROM ${tableName} ${filter ? `WHERE ${filter}` : ''}`;
+    // Get filtered data from source (filter is internal, not user-provided)
+    const query = `SELECT * FROM ${qTable} ${filter ? `WHERE ${filter}` : ''}`;
     const sourceData = await sourcePool.query(query);
 
     if (sourceData.rows.length === 0) {
@@ -366,20 +383,22 @@ export class ForkSynchronizer {
     // Upsert records into target
     const columns = Object.keys(sourceData.rows[0]);
     let synced = 0;
+    const qPK = this.quoteIdentifier(strategy.primaryKey);
 
     for (const row of sourceData.rows) {
       const values = columns.map(col => row[col]);
       const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+      const quotedCols = columns.map(c => this.quoteIdentifier(c)).join(', ');
       const updates = columns
         .filter(col => col !== strategy.primaryKey)
-        .map(col => `${col} = EXCLUDED.${col}`)
+        .map(col => `${this.quoteIdentifier(col)} = EXCLUDED.${this.quoteIdentifier(col)}`)
         .join(', ');
 
       try {
         await targetPool.query(
-          `INSERT INTO ${tableName} (${columns.join(', ')})
+          `INSERT INTO ${qTable} (${quotedCols})
            VALUES (${placeholders})
-           ON CONFLICT (${strategy.primaryKey})
+           ON CONFLICT (${qPK})
            DO UPDATE SET ${updates}`,
           values
         );
