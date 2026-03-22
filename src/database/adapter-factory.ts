@@ -5,6 +5,9 @@
 
 import { DatabaseAdapter, DatabaseConfig } from './adapter';
 import { PostgresAdapter } from './adapters/postgres';
+import { MySQLAdapter } from './adapters/mysql';
+import { SQLiteAdapter } from './adapters/sqlite';
+import { MongoDBAdapter } from './adapters/mongodb';
 
 export class AdapterFactory {
   static create(config: DatabaseConfig): DatabaseAdapter {
@@ -13,13 +16,13 @@ export class AdapterFactory {
         return new PostgresAdapter(config);
 
       case 'mysql':
-        throw new Error('MySQL adapter not yet implemented. Install mysql2 and add MySQLAdapter.');
+        return new MySQLAdapter(config);
 
       case 'sqlite':
-        throw new Error('SQLite adapter not yet implemented. Install better-sqlite3 and add SQLiteAdapter.');
+        return new SQLiteAdapter(config);
 
       case 'mongodb':
-        throw new Error('MongoDB adapter not yet implemented. Install mongodb and add MongoDBAdapter.');
+        return new MongoDBAdapter(config);
 
       default:
         throw new Error(`Unsupported database engine: ${config.engine}`);
