@@ -1,0 +1,42 @@
+# NeuroBase Docker Compose
+# Usage:
+#   docker compose up        — Start API server with PostgreSQL
+#   docker compose up -d     — Start in background
+#   docker compose down      — Stop all services
+
+services:
+  neurobase:
+    build: .
+    ports:
+      - "${NEUROBASE_PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://neurobase:neurobase@postgres:5432/neurobase
+      - DB_ENGINE=postgresql
+      - NEUROBASE_MODE=api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: neurobase
+      POSTGRES_PASSWORD: neurobase
+      POSTGRES_DB: neurobase
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neurobase"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:
