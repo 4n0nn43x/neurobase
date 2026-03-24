@@ -2,25 +2,33 @@
 
 ## Overview
 
-NeuroBase's multi-agent system enables multiple specialized AI agents to work collaboratively on separate database forks, coordinated by a central orchestrator.
+NeuroBase's multi-agent system enables multiple specialized AI agents to work collaboratively on separate database forks, coordinated by a central orchestrator. In v3, additional inline agents (Value Explorer, Explainer, Diagnostic Tree Search) operate within the query pipeline without requiring separate forks.
 
 ## Architecture
 
 ```
 Multi-Agent Orchestrator (Main DB)
-├── Agent Registry
-├── Task Queue
-├── Event System
-└── Messaging
+├── Agent Registry & Lifecycle Management
+├── Task Queue & Distribution
+├── Event System & Monitoring
+├── Inter-agent Communication
+├── Health Monitor & Self-Healing
+├── Circuit Breaker (LLM failover)
+└── Operation Supervisor (risk classification)
 
-Specialized Agents (Each on Fork)
-├── Schema Evolution Agent
-├── Query Validator Agent
-├── Learning Aggregator Agent
-└── A/B Testing Agent
+Fork-Based Agents (isolated environments)
+├── Schema Evolution Agent → index/view recommendations
+├── Query Validator Agent → safety & performance checks
+├── Learning Aggregator Agent → cross-agent insights
+└── A/B Testing Agent → parallel strategy comparison
+
+Inline Agents (within query pipeline)
+├── Value Explorer Agent → verify DB values before SQL
+├── Explainer Agent → post-execution summaries
+└── Diagnostic Tree Search → perf root cause analysis
 
 Fork Synchronizer
-└── Knowledge Sharing
+└── Knowledge sharing across agents
 ```
 
 ---

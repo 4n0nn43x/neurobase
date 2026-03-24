@@ -12,6 +12,44 @@ Currently no authentication required. For production use, implement authenticati
 
 ---
 
+## Diagnostic Endpoint (v3)
+
+### Diagnose Query Performance
+
+```http
+POST /api/diagnose
+```
+
+Analyze a SQL query for performance issues using tree-based diagnostic search.
+
+**Request Body:**
+```json
+{
+  "sql": "SELECT * FROM orders WHERE status = 'pending'"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "diagnostic": {
+    "rootCause": "Found 2 issue(s) for query on \"orders\"",
+    "path": ["Query Performance Diagnostic", "Sequential Scan Detection", "Missing Index"],
+    "recommendations": [
+      "Sequential scan detected. Consider adding an index on the filtered columns.",
+      "Table \"orders\" has few or no indexes. Add indexes on columns used in WHERE, JOIN, and ORDER BY clauses."
+    ],
+    "details": {
+      "sql": "SELECT * FROM orders WHERE status = 'pending'",
+      "primaryTable": "orders"
+    }
+  }
+}
+```
+
+---
+
 ## Core API Endpoints
 
 ### Health Check
@@ -25,7 +63,7 @@ GET /health
 {
   "status": "healthy",
   "timestamp": "2025-10-31T12:00:00.000Z",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "agents": {
     "total": 3,
     "running": 2

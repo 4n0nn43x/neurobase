@@ -2,353 +2,229 @@
 
 ## Overview
 
-NeuroBase is an intelligent database system built on PostgreSQL that combines natural language processing with autonomous AI agents for database management and optimization.
+NeuroBase is a multi-database conversational engine that translates natural language to SQL, learns from corrections, and self-heals on failures. It supports PostgreSQL, MySQL, SQLite, and MongoDB through a unified adapter interface, with multi-provider LLM support (OpenAI, Anthropic, Ollama).
 
 ## System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│              Multi-Agent Orchestrator                    │
-│                  (Main Database)                         │
-├─────────────────────────────────────────────────────────┤
-│  • Agent Registry & Lifecycle Management                │
-│  • Task Queue & Distribution                            │
-│  • Event System & Monitoring                            │
-│  • Inter-agent Communication                            │
-└────────────────┬────────────────────────────────────────┘
-                 │
-    ┌────────────┼────────────┬──────────────┬─────────────┐
-    │            │            │              │             │
-┌───▼───┐   ┌───▼───┐   ┌───▼───┐      ┌───▼───┐   ┌─────▼────┐
-│Fork 1 │   │Fork 2 │   │Fork 3 │      │Fork 4 │   │Fork N... │
-│       │   │       │   │       │      │       │   │          │
-│Schema │   │Query  │   │Learn. │      │A/B    │   │Custom    │
-│Evol.  │   │Valid. │   │Aggr.  │      │Test   │   │Agent     │
-│Agent  │   │Agent  │   │Agent  │      │Agent  │   │          │
-└───┬───┘   └───┬───┘   └───┬───┘      └───┬───┘   └─────┬────┘
-    │            │            │              │             │
-    └────────────┴────────────┴──────────────┴─────────────┘
-                 │
-        Fork Synchronizer
-     (Shares Learning & Data)
+│                   User Interfaces                        │
+│    CLI (interactive)  │  REST API  │  MCP Server         │
+└───────────┬───────────┴──────┬─────┴───────┬────────────┘
+            │                  │             │
+┌───────────▼──────────────────▼─────────────▼────────────┐
+│                    NeuroBase Core                         │
+│                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │
+│  │  Confidence   │  │  Privacy     │  │  Semantic      │  │
+│  │  Router       │  │  Guard       │  │  Catalog       │  │
+│  │  (4-tier RAG) │  │  (3 modes)   │  │  (auto-gen)    │  │
+│  └──────┬───────┘  └──────────────┘  └───────────────┘  │
+│         │                                                │
+│  ┌──────▼───────────────────────────────────────────┐   │
+│  │              Linguistic Agent                     │   │
+│  │  + Value Explorer (verify DB values)              │   │
+│  │  + Schema Pruner (token budget)                   │   │
+│  │  + Semantic Model (business concepts)             │   │
+│  └──────┬───────────────────────────────────────────┘   │
+│         │                                                │
+│  ┌──────▼───────────────────────────────────────────┐   │
+│  │         Candidate Selector (optional)             │   │
+│  │  Generate N candidates → filter → rank by cost    │   │
+│  └──────┬───────────────────────────────────────────┘   │
+│         │                                                │
+│  ┌──────▼──────┐  ┌──────────────┐  ┌───────────────┐  │
+│  │  Result     │  │  Optimizer   │  │  Self-         │  │
+│  │  Verifier   │  │  Agent       │  │  Correction    │  │
+│  │  (5-step)   │  │              │  │  Loop (3x)     │  │
+│  └─────────────┘  └──────────────┘  └───────────────┘  │
+│                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │
+│  │  Memory      │  │  Explainer   │  │  Diagnostic    │  │
+│  │  Agent       │  │  Agent       │  │  Tree Search   │  │
+│  │  (learning)  │  │  (post-exec) │  │  (perf debug)  │  │
+│  └──────────────┘  └──────────────┘  └───────────────┘  │
+└──────────────────────────┬──────────────────────────────┘
+                           │
+┌──────────────────────────▼──────────────────────────────┐
+│                   Database Layer                         │
+│  ┌──────────┐ ┌────────┐ ┌────────┐ ┌─────────┐       │
+│  │PostgreSQL│ │ MySQL  │ │ SQLite │ │ MongoDB │       │
+│  └──────────┘ └────────┘ └────────┘ └─────────┘       │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Query Processing Pipeline
+
+```
+Natural Language Query
+        │
+        ▼
+┌─ Confidence Router ──────────────────────────────────┐
+│  Tier 1 (≥0.95): cache hit → skip LLM               │
+│  Tier 2 (≥0.80): few-shot with similar examples      │
+│  Tier 3 (≥0.50): full pipeline + schema + history     │
+│  Tier 4 (<0.50): LLM fallback with full context       │
+└───────┬──────────────────────────────────────────────┘
+        │
+        ▼
+┌─ Value Explorer ─────────────────────────────────────┐
+│  Detect filter values ("in Electronics")              │
+│  Query DISTINCT values from DB                        │
+│  Find best match (case/plural/Levenshtein)            │
+│  Inject real values into LLM prompt                   │
+│  (disabled in strict/schema-only privacy mode)        │
+└───────┬──────────────────────────────────────────────┘
+        │
+        ▼
+┌─ Schema Pruner ──────────────────────────────────────┐
+│  Score tables: keyword overlap + FK proximity          │
+│                + usage frequency + description match   │
+│  Serialize top tables until token budget reached       │
+│  Compact format for borderline tables                  │
+│  (skipped for <10 tables)                              │
+└───────┬──────────────────────────────────────────────┘
+        │
+        ▼
+┌─ Linguistic Agent (LLM call) ────────────────────────┐
+│  System prompt: schema + examples + values + semantic  │
+│  Handles: SQL generation, conversation, clarification  │
+│  Multi-language: English + French + mixed              │
+└───────┬──────────────────────────────────────────────┘
+        │
+        ▼ (if multi-candidate enabled)
+┌─ Candidate Selector ────────────────────────────────┐
+│  Generate 3 SQLs (temp 0.0, 0.2, 0.4) in parallel   │
+│  Filter: quickVerify eliminates bad schema refs       │
+│  Rank: EXPLAIN cost comparison                        │
+│  Tiebreak: LLM picks if costs within 20%             │
+└───────┬──────────────────────────────────────────────┘
+        │
+        ▼
+┌─ Optimizer Agent ────────────────────────────────────┐
+│  EXPLAIN analysis → rewrite suggestions               │
+│  Index recommendations                                │
+│  (optional, config-driven)                            │
+└───────┬──────────────────────────────────────────────┘
+        │
+        ▼
+┌─ Execute on Database ────────────────────────────────┐
+│  Parameterized query with timeout                     │
+│  On failure → Self-Correction Loop (3 attempts)       │
+│    attempt 1: temp 0.1                                │
+│    attempt 2: temp 0.3                                │
+│    attempt 3: temp 0.5                                │
+└───────┬──────────────────────────────────────────────┘
+        │
+        ▼
+┌─ Post-Processing ────────────────────────────────────┐
+│  Memory Agent: store NL→SQL mapping for learning      │
+│  Explainer Agent: "47 orders from last week, sorted"  │
+│  Feedback Loop: temporal decay weighting              │
+└───────┬──────────────────────────────────────────────┘
+        │
+        ▼
+      Results
 ```
 
 ## Core Components
 
-### 1. NeuroBase Core
+### NeuroBase Core (`src/core/neurobase.ts`)
 
-Central system managing the main database operations:
-- Natural language query processing
-- SQL generation via LLM providers
-- Query execution and result formatting
-- Schema introspection
-- Learning history storage
+Central orchestrator that wires together all components. Instantiates agents, manages the query pipeline, handles self-correction, and exposes the `query()`, `correct()`, `diagnose()` methods.
 
-### 2. Multi-Agent Orchestrator
+### Agents (`src/agents/`)
 
-Coordinates multiple specialized AI agents:
-- **Agent Registry**: Tracks all registered agents
-- **Task Queue**: Distributes work with priority
-- **Event System**: Monitors and logs activities
-- **Communication**: Inter-agent messaging
+| Agent | File | Role |
+|-------|------|------|
+| Linguistic | `linguistic.ts` | NL → SQL translation with schema/value/semantic context |
+| Optimizer | `optimizer.ts` | EXPLAIN-based query rewriting |
+| Memory | `memory.ts` | Learning storage with embeddings |
+| Value Explorer | `value-explorer.ts` | Verify referenced values exist in DB |
+| Explainer | `explainer.ts` | Post-execution natural language summary |
+| Schema Evolution | `schema-evolution.ts` | Index/view/partition recommendations |
+| Query Validator | `query-validator.ts` | Safety and performance validation |
+| Learning Aggregator | `learning-aggregator.ts` | Cross-agent insight synthesis |
+| A/B Testing | `ab-testing.ts` | Parallel strategy comparison |
 
-Database tables:
-- `neurobase_agents` - Agent metadata
-- `neurobase_agent_tasks` - Task queue
-- `neurobase_agent_messages` - Agent communication
-- `neurobase_agent_metrics` - Performance tracking
+### RAG Pipeline (`src/rag/`)
 
-### 3. Specialized Agents
+| Component | File | Role |
+|-----------|------|------|
+| Confidence Router | `confidence-router.ts` | 4-tier query routing based on confidence |
+| Self-Correction | `self-correction.ts` | Retry failed SQL with error context |
+| Candidate Selector | `candidate-selector.ts` | Multi-SQL generation and ranking |
+| Schema Pruner | `schema-pruner.ts` | Token-budget-aware schema filtering |
+| Result Verifier | `result-verifier.ts` | 5-step SQL validation pipeline |
+| Feedback Loop | `feedback-loop.ts` | Temporal decay learning weights |
+| Vector Cache | `vector-cache.ts` | In-memory embedding cache with LRU |
 
-#### Schema Evolution Agent
-- Analyzes query patterns
-- Recommends database optimizations (indexes, views, partitions)
-- Tests changes on dedicated fork
-- Measures performance impact
+### Semantic Layer (`src/semantic/`)
 
-#### Query Validator Agent
-- Validates SQL syntax and safety
-- Detects dangerous patterns
-- Analyzes query performance
-- Tests on fork before production
+| Component | File | Role |
+|-----------|------|------|
+| Auto-Catalog | `auto-catalog.ts` | LLM-generates table/column descriptions |
+| Loader | `loader.ts` | Loads YAML semantic model |
+| Renderer | `renderer.ts` | Converts model to LLM prompt text |
 
-#### Learning Aggregator Agent
-- Collects learning from all agents
-- Identifies cross-agent patterns
-- Builds knowledge graph
-- Generates insights
+### LLM Providers (`src/llm/`)
 
-#### A/B Testing Agent
-- Tests multiple strategies in parallel
-- Creates forks for comparison
-- Statistical analysis
-- Winner determination
+Abstract `BaseLLMProvider` with implementations:
+- **OpenAI** — GPT-4 Turbo, text-embedding-3-small
+- **Anthropic** — Claude Sonnet/Opus
+- **Ollama** — Local models (llama3.2, etc.)
 
-### 4. Fork Manager
+All providers implement `generateCompletion()` and `generateEmbedding()`.
 
-Manages database forks for agent isolation:
-- Zero-copy fork creation
-- Fork lifecycle management
-- Connection string generation
-- Fork deletion
+### Database Adapters (`src/database/`)
 
-### 5. Fork Synchronizer
+Abstract `DatabaseAdapter` interface with implementations for PostgreSQL, MySQL, SQLite, MongoDB. Each adapter provides: schema introspection, query execution, transactions, EXPLAIN, forking.
 
-Enables knowledge sharing between forks:
-- **Incremental sync**: Only new/updated records
-- **Full sync**: Complete data copy
-- **Selective sync**: Filter-based
-- Conflict resolution strategies
-- Automatic scheduling
+### Observability (`src/observability/`)
 
-### 6. Monitoring Dashboard
+- **OpenTelemetry** tracing with OTLP HTTP exporter
+- **Span definitions** for the full query lifecycle (16 span types)
+- **Alert system** with metric-based rules and webhook/log channels
+- **Health monitor** with auto-healing actions
 
-Web-based real-time monitoring:
-- System metrics
-- Agent status
-- Synchronization statistics
-- Event stream
-- Performance graphs
+### Security (`src/security/`)
 
-## Data Flow
+- **SQL parser** — AST-based dangerous pattern detection
+- **Privacy guard** — three-tier data control (strict/schema-only/permissive)
+- **Audit log** — immutable append-only trail
 
-### Query Processing
+### Diagnostics (`src/diagnostics/`)
 
-```
-User Input (Natural Language)
-    ↓
-Linguistic Agent
-    ├─→ Load Schema
-    ├─→ Retrieve Learning History
-    ├─→ Generate SQL via LLM
-    └─→ Validate SQL
-    ↓
-Optimizer Agent (optional)
-    ├─→ Analyze Execution Plan
-    ├─→ Suggest Optimizations
-    └─→ Apply Safe Optimizations
-    ↓
-Execute on Database
-    ↓
-Memory Agent
-    ├─→ Generate Embedding
-    ├─→ Store Learning Entry
-    └─→ Update History
-    ↓
-Return Results
-```
+Tree-based root cause analysis for query performance. Traverses a knowledge tree: sequential scan → missing index, lock contention, large result set, complex joins, table bloat.
 
-### Learning Flow
+## Database Tables
 
-```
-Query Execution
-    ↓
-Generate Text Embedding
-    ↓
-Store in Learning History
-    ├─→ Natural language query
-    ├─→ Generated SQL
-    ├─→ Embedding vector
-    ├─→ Success flag
-    └─→ Metadata
-    ↓
-Future Queries
-    ├─→ Find Similar via Embeddings
-    ├─→ Retrieve Example SQL
-    ├─→ Improve Translation
-    └─→ Learn from Patterns
-```
+### Core
+- `neurobase_learning_history` — NL→SQL mappings with embeddings
+- `neurobase_corrections` — user corrections for learning
+- `neurobase_semantic_catalog` — auto-generated table/column descriptions
 
-## Database Schema
+### Multi-Agent
+- `neurobase_agents` — agent metadata and status
+- `neurobase_agent_tasks` — task queue with priority
+- `neurobase_agent_messages` — inter-agent communication
 
-### Core Tables
+### Audit
+- `neurobase_audit_log` — immutable operation trail
 
-#### neurobase_learning_history
-```sql
-CREATE TABLE neurobase_learning_history (
-  id TEXT PRIMARY KEY,
-  natural_language TEXT,
-  sql TEXT,
-  user_id TEXT,
-  timestamp TIMESTAMP,
-  success BOOLEAN,
-  corrected BOOLEAN,
-  embedding vector(384),  -- pgvector
-  context JSONB
-);
-```
+## Entry Points
 
-#### neurobase_corrections
-```sql
-CREATE TABLE neurobase_corrections (
-  id TEXT PRIMARY KEY,
-  original_query TEXT,
-  original_sql TEXT,
-  corrected_sql TEXT,
-  reason TEXT,
-  user_id TEXT,
-  timestamp TIMESTAMP
-);
-```
+| Entry | File | Command |
+|-------|------|---------|
+| Interactive CLI | `src/cli.ts` | `neurobase interactive` |
+| REST API | `src/api.ts` | `npm run serve` |
+| Multi-Agent API | `src/multi-agent-api.ts` | `npm run serve:multi-agent` |
+| MCP Server | `src/mcp/server.ts` | `npm run serve:mcp` |
 
-### Multi-Agent Tables
+## Design Patterns
 
-#### neurobase_agents
-```sql
-CREATE TABLE neurobase_agents (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  type TEXT NOT NULL,
-  fork_id TEXT,
-  status TEXT NOT NULL,
-  config JSONB,
-  metrics JSONB,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-#### neurobase_agent_tasks
-```sql
-CREATE TABLE neurobase_agent_tasks (
-  id TEXT PRIMARY KEY,
-  agent_id TEXT REFERENCES neurobase_agents(id),
-  task_type TEXT NOT NULL,
-  payload JSONB,
-  status TEXT DEFAULT 'pending',
-  priority INTEGER DEFAULT 5,
-  result JSONB,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-#### neurobase_agent_messages
-```sql
-CREATE TABLE neurobase_agent_messages (
-  id TEXT PRIMARY KEY,
-  from_agent_id TEXT,
-  to_agent_id TEXT,
-  message_type TEXT NOT NULL,
-  payload JSONB,
-  read BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-## LLM Integration
-
-### Provider Abstraction
-
-```typescript
-interface BaseLLMProvider {
-  generateCompletion(messages, options): Promise<Response>
-  generateEmbedding(text): Promise<number[]>
-  createSQLPrompt(query, schema, examples): string
-}
-```
-
-### Supported Providers
-
-1. **OpenAI** (GPT-4)
-2. **Anthropic** (Claude)
-3. **Ollama** (Local models)
-
-### Embedding Generation
-
-Uses local Transformers.js (`all-MiniLM-L6-v2`) for:
-- 384-dimensional vectors
-- No external API calls
-- Privacy-focused
-- Cosine similarity search
-
-## Fork-Based Architecture
-
-### Why Forks?
-
-- **Safety**: Test changes without risk
-- **Isolation**: Agents don't interfere
-- **Parallelism**: True concurrent execution
-- **Cost**: Zero-copy = no duplication
-
-### Fork Creation
-
-```typescript
-const fork = await forkManager.createFork({
-  name: 'agent-fork',
-  strategy: 'now',  // or 'last-snapshot', 'to-timestamp'
-  waitForCompletion: true
-});
-```
-
-### Fork Synchronization
-
-```typescript
-await synchronizer.createSyncJob({
-  source: 'fork-1',
-  target: 'fork-2',
-  tables: ['neurobase_learning_history'],
-  mode: 'incremental',
-  direction: 'push'
-});
-```
-
-## Event System
-
-### Event Types
-
-- `agent:started` - Agent started
-- `agent:stopped` - Agent stopped
-- `agent:error` - Agent error
-- `task:completed` - Task finished
-- `fork:created` - Fork created
-- `sync:started` - Sync job started
-- `sync:completed` - Sync job finished
-
-### Event Handling
-
-```typescript
-orchestrator.on((event) => {
-  console.log(`[${event.type}] ${event.timestamp}`);
-  // Handle event
-});
-```
-
-## Security
-
-- **SQL Injection Prevention**: Parameterized queries
-- **Dangerous Pattern Detection**: Blocks DROP, TRUNCATE, etc.
-- **Read-only Mode**: Restrict to SELECT only
-- **API Rate Limiting**: 100 requests per 15 minutes
-- **Query Timeout**: 30 second maximum
-- **Fork Isolation**: Complete separation
-
-## Performance
-
-### Optimizations
-
-- **Schema Caching**: 5-minute TTL
-- **Connection Pooling**: Max 20 connections
-- **Embedding Cache**: In-memory
-- **Local Embeddings**: No external API calls
-- **Incremental Sync**: Only changed data
-
-### Benchmarks
-
-- Fork creation: ~2 seconds
-- Query translation: <500ms (LLM dependent)
-- Embedding generation: <100ms
-- Sync (incremental): 100-1000 records/second
-
-## Scalability
-
-- Multiple agents on separate forks
-- Parallel task execution
-- Horizontal scaling via fork distribution
-- Efficient resource usage (~5 connections per agent)
-
-## Monitoring
-
-- Real-time dashboard
-- Event logging
-- Metric tracking
-- Performance analytics
-- Error tracking
+- **Factory** — LLMFactory, AdapterFactory for provider/DB selection
+- **Strategy** — different database adapters implementing same interface
+- **Observer** — event handlers in NeuroBase core
+- **Circuit Breaker** — LLM provider failover chain
+- **Pipeline** — multi-stage query processing (RAG → translate → verify → execute → learn)

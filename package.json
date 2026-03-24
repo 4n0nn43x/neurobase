@@ -1,7 +1,7 @@
 {
   "name": "neurobase",
-  "version": "1.0.0",
-  "description": "An intelligent, self-learning conversational database built on Agentic Postgres",
+  "version": "3.0.0",
+  "description": "Intelligent, self-learning conversational database engine with multi-agent architecture",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {

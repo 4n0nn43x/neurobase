@@ -1,418 +1,139 @@
-# NeuroBase Quick Start Guide
+# Quick Start
 
-Get started with NeuroBase in 5 minutes!
+Get NeuroBase running in under 5 minutes.
 
-
-**{% embed https://youtu.be/fCqL_s2971k %}**
-
----
-
-## Prerequisites
-
-- Node.js 18+ installed
-- Tiger Data account (free)
-- OpenAI API key (or Anthropic/Ollama)
-
----
-
-## Step 1: Get Tiger Data Credentials
-
-### Create Account
-
-1. Visit [https://www.tigerdata.io/](https://www.tigerdata.io/)
-2. Sign up for free account
-3. Verify your email
-
-### Install Tiger CLI
+## 1. Install and configure
 
 ```bash
-curl -fsSL https://cli.tigerdata.com | sh
-tiger auth login
+npx neurobase setup
 ```
 
-### Create Database
+The wizard will ask for:
+- Database engine and connection URL
+- LLM provider and API key
+- Feature toggles
+- Privacy mode
+
+This creates a `.env` file in the current directory.
+
+## 2. Initialize database
 
 ```bash
-# Create service
-tiger service create --name my-neurobase
-
-# Get connection details (save these!)
-tiger db connection-string <your service ID>
+npx neurobase init
 ```
 
----
+Type `y` when prompted to load sample e-commerce data.
 
-## Step 2: Get LLM API Key
-
-### Option A: OpenAI (Recommended)
-
-1. Visit [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
-2. Create new API key
-3. Copy the key (starts with `sk-...`)
-
-### Option B: Anthropic
-
-1. Visit [https://console.anthropic.com/](https://console.anthropic.com/)
-2. Create API key
-3. Copy the key (starts with `sk-ant-...`)
-
-### Option C: Ollama (Local, Free)
+## 3. Start querying
 
 ```bash
-# Install Ollama
-curl https://ollama.ai/install.sh | sh
-
-# Pull a model
-ollama pull llama3.2
-
-# Start Ollama server
-ollama serve
+npx neurobase interactive
 ```
 
----
+## Example Queries
 
-## Step 3: Install NeuroBase
-
-```bash
-# Clone repository
-git clone https://github.com/4n0nn43x/neurobase.git
-cd neurobase
-
-# Install dependencies
-npm install
-```
-
----
-
-## Step 4: Configure
-
-```bash
-# Copy environment template
-cp .env.example .env
-```
-
-Edit `.env`:
-
-```env
-# Database Configuration (from Step 1)
-DATABASE_URL=postgresql://tsdbadmin:your-password@your-service.tsdb.cloud.timescale.com:5432/tsdb?sslmode=require
-
-# LLM Provider (from Step 2)
-LLM_PROVIDER=openai
-OPENAI_API_KEY=sk-your-key-here
-OPENAI_MODEL=gpt-4-turbo-preview
-```
-
----
-
-## Step 5: Initialize
-
-```bash
-npm run init
-```
-
-When prompted, type `y` to load sample e-commerce data.
-
-You should see:
+### Basic
 
 ```
-✓ Database connection successful
-✓ NeuroBase tables created
-✓ Schema created
-✓ Sample data loaded
-
-Database Statistics:
-  Size: 125 MB
-  Tables: 5
-  Views: 2
-  Functions: 3
-```
-
----
-
-## Step 6: Start Using NeuroBase!
-
-### Interactive CLI
-
-```bash
-npm start i
-```
-
-Try these queries:
-
-```
-NeuroBase> Show me all users
-
-NeuroBase> What are the top 5 products by sales?
-
-NeuroBase> How many orders were placed this week?
-
-NeuroBase> Show me users who haven't ordered in 30 days
-```
-
-### API Server
-
-```bash
-npm run serve
-```
-
-Then query via HTTP:
-
-```bash
-curl -X POST http://localhost:3000/api/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Show me all active users"}'
-```
-
-### Programmatic Usage
-
-```typescript
-import { NeuroBase, loadConfig } from 'neurobase';
-
-const config = loadConfig();
-const nb = new NeuroBase(config);
-
-await nb.initialize();
-
-const result = await nb.query("Show me recent orders");
-console.log(result.data);
-
-await nb.close();
-```
-
----
-
-## Example Queries to Try
-
-### Basic Queries
-
-```
-"Show me all users"
-"How many products do we have?"
-"List all categories"
+neurobase > show me all users
+neurobase > how many products do we have?
+neurobase > list all categories
 ```
 
 ### Aggregations
 
 ```
-"What's the total sales this month?"
-"Show me average order value by category"
-"Count orders by status"
+neurobase > total sales this month
+neurobase > average order value by category
+neurobase > count orders by status
 ```
 
 ### Joins
 
 ```
-"Show me users with their orders"
-"List products with their categories"
-"Show me orders with customer names"
+neurobase > show users with their orders
+neurobase > products with category names
+neurobase > orders with customer details
 ```
 
 ### Filters
 
 ```
-"Show me users created this week"
-"Find products with price over $500"
-"Show me pending orders"
+neurobase > users created this week
+neurobase > products over $500
+neurobase > pending orders
 ```
 
-### Complex Queries
+### Complex
 
 ```
-"Show me the top 5 customers by total spending"
-"What products have the highest ratings?"
-"Which categories have the most sales?"
+neurobase > top 5 customers by total spending
+neurobase > products with highest ratings that are in stock
+neurobase > monthly revenue trend for this year
 ```
 
----
-
-## Understanding the Output
+### Follow-up (context preserved)
 
 ```
-NeuroBase> Show me the top 5 customers by total purchases
-
-🧠 Analyzing query...
-
-💡 This query finds customers with highest purchase totals
-
-📝 Generated SQL:
-   SELECT u.name, SUM(o.total_amount) as total
-   FROM users u
-   JOIN orders o ON u.id = o.user_id
-   GROUP BY u.name
-   ORDER BY total DESC
-   LIMIT 5;
-
-⚡ Execution time: 45ms
-
-📊 Results (5 rows):
-
-┌──────────────┬──────────┐
-│ name         │ total    │
-├──────────────┼──────────┤
-│ John Smith   │ $5240.00 │
-│ Alice Brown  │ $4890.00 │
-│ Bob Johnson  │ $3750.00 │
-│ Carol White  │ $3200.00 │
-│ David Lee    │ $2980.00 │
-└──────────────┴──────────┘
-
-✓ Learned from this interaction
+neurobase > show me all categories
+neurobase > with their product counts
+neurobase > sort by count descending
 ```
 
----
-
-## Learning in Action
-
-### First Time
+### French
 
 ```
-NeuroBase> Show me inactive customers
+neurobase > combien de commandes cette semaine ?
+neurobase > montre les produits les plus vendus
+neurobase > quels clients n'ont pas commandé depuis 30 jours ?
 ```
-
-NeuroBase generates SQL based on general understanding.
-
-### Correction
-
-```
-NeuroBase> Actually, I meant customers who haven't ordered in 90 days
-
-💡 Got it! Updating my understanding...
-```
-
-### Next Time
-
-```
-NeuroBase> Show me inactive customers
-```
-
-NeuroBase now remembers: "inactive" = no orders in 90 days!
-
----
 
 ## CLI Commands
 
-While in interactive mode:
+| Command | Action |
+|---------|--------|
+| `.help` | Show all commands |
+| `.schema` | Display database schema with relationships |
+| `.stats` | Show database statistics |
+| `.clear` | Clear screen and history |
+| `.fork` | Create a database fork for testing |
+| `.forks` | List active forks |
+| `.fork-delete <id>` | Delete a fork |
+| `.exit` | Quit |
 
-- `.exit` - Exit NeuroBase
-- `.help` - Show help
-- `.schema` - Display database schema
-- `.stats` - Show statistics
-- `.clear` - Clear screen
-
----
-
-## Troubleshooting
-
-### "Cannot connect to database"
-
-```bash
-# Test connection
-tiger db test-connection --service-id your-service-id
-
-# Verify credentials in .env
-cat .env | grep TIGER
-```
-
-### "Invalid API key"
+## API Mode
 
 ```bash
-# Verify OpenAI key
-curl https://api.openai.com/v1/models \
-  -H "Authorization: Bearer $OPENAI_API_KEY"
-
-# Check .env
-cat .env | grep OPENAI
+npx neurobase serve
 ```
-
-### "Module not found"
 
 ```bash
-# Reinstall dependencies
-rm -rf node_modules
-npm install
+curl -X POST http://localhost:3000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "show all users"}'
 ```
 
----
+## Self-Correction in Action
+
+If your query references a misspelled table or column, NeuroBase auto-corrects:
+
+```
+neurobase > show products from the "electronik" category
+
+  ╭── ⟩ SQL ──────────────────────────────────────────╮
+  │ SELECT p.* FROM products p                         │
+  │ JOIN categories c ON p.category_id = c.id          │
+  │ WHERE LOWER(c.name) = LOWER('electronics')         │
+  ╰────────────────────────────────────────────────────╯
+
+  ⊞ 5 rows  │  ⏱ 120ms  │  ⟳ auto-corrected  │  ◉ learned
+```
+
+The value explorer detected "electronik" doesn't exist, found "Electronics" as the closest match, and the LLM used the correct value.
 
 ## Next Steps
 
-### Learn More
-
-- [Full Documentation](README.md)
-- [Architecture Guide](docs/ARCHITECTURE.md)
-- [API Reference](docs/API.md)
-- [Deployment Guide](docs/DEPLOYMENT.md)
-
-### Try Advanced Features
-
-1. **Query Optimization**
-   ```env
-   ENABLE_OPTIMIZATION=true
-   ```
-
-2. **Multiple LLM Providers**
-   ```bash
-   # Try Anthropic
-   LLM_PROVIDER=anthropic
-
-   # Try Ollama (local)
-   LLM_PROVIDER=ollama
-   ```
-
-3. **Use Your Own Data**
-   - Connect to your existing database
-   - Update TIGER_* credentials
-   - Skip sample data during init
-
-### Build Something Cool
-
-Ideas for projects:
-- Slack bot for database queries
-- Analytics dashboard
-- Customer support tool
-- Internal data exploration tool
-
----
-
-## Get Help
-
-- [GitHub Issues](https://github.com/4n0nn43x/neurobase/issues)
-- [Discussions](https://github.com/4n0nn43x/neurobase/discussions)
-- [Discord](https://discord.gg/neurobase)
-- Email: support@neurobase.dev
-
----
-
-## What's Happening Under the Hood?
-
-```
-Your Query
-    │
-    ▼
-┌─────────────────┐
-│Linguistic Agent │  ← Understands your question
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Generate SQL   │  ← Creates optimized PostgreSQL
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Execute Query   │  ← Runs on Tiger Cloud
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Memory Agent    │  ← Learns for next time
-└────────┬────────┘
-         │
-         ▼
-    Results!
-```
-
----
-
-**You're all set! Start asking questions in natural language! 🧠✨**
+- [Full feature documentation](../README.md)
+- [Architecture guide](architecture.md)
+- [API reference](api-reference.md)
+- [Multi-agent system](multi-agent-system.md)
