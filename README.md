@@ -439,26 +439,6 @@ npm run test:all          # all tests verbose
 
 ---
 
-## Inspirations
-
-NeuroBase draws from the best ideas in the text-to-SQL ecosystem:
-
-| Project | Stars | Key idea borrowed |
-|---------|-------|-------------------|
-| [Wren AI](https://github.com/Canner/WrenAI) | 14.6k | Semantic layer, smart context discovery |
-| [Vanna AI](https://github.com/vanna-ai/vanna) | 20.4k | RAG-based SQL generation |
-| [Chat2DB](https://github.com/chat2db/Chat2DB) | 23k | Post-execution explanations |
-| [DB-GPT](https://github.com/eosphoros-ai/DB-GPT) | 14.6k | Schema pruning for large databases |
-| [DBHub](https://github.com/bytebase/dbhub) | — | MCP server pattern |
-| [pgai](https://github.com/timescale/pgai) | — | Semantic catalog auto-generation |
-| [PremSQL](https://github.com/premsql/premsql) | — | Self-correction loop |
-| [ReFoRCE](https://arxiv.org/abs/2412.01045) | — | Value exploration, column verification |
-| [Contextual AI bird-sql](https://contextual.ai) | — | Multi-candidate generation + ranking |
-| [D-Bot](https://github.com/TsinghuaDatabaseGroup/DB-GPT) | — | Diagnostic tree search (VLDB) |
-| [DataLine](https://github.com/RamiAwar/dataline) | — | Schema-only privacy mode |
-
----
-
 ## License
 
 MIT — see [LICENSE](LICENSE).
