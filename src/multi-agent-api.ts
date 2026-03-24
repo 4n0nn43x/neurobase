@@ -513,6 +513,44 @@ app.get('/api/sync', async (_req: Request, res: Response, next: NextFunction) =>
 });
 
 // ============================================================================
+// DIAGNOSTIC ENDPOINTS
+// ============================================================================
+
+/**
+ * Diagnose a SQL query for performance issues
+ * POST /api/diagnose
+ */
+app.post('/api/diagnose', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { sql } = req.body;
+
+    if (!sql) {
+      res.status(400).json({
+        success: false,
+        error: 'SQL query is required',
+      });
+      return;
+    }
+
+    // Use DiagnosticTreeSearch directly
+    const { DiagnosticTreeSearch } = await import('./diagnostics/tree-search');
+    const diagnosticSearch = new DiagnosticTreeSearch(
+      // Create a temporary adapter for diagnostics
+      (await import('./database/adapter-factory')).AdapterFactory.create(config.database)
+    );
+
+    const result = await diagnosticSearch.diagnose(sql);
+
+    res.json({
+      success: true,
+      diagnostic: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================================================
 // LEARNING & INSIGHTS ENDPOINTS
 // ============================================================================
 
