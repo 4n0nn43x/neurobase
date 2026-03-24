@@ -107,6 +107,7 @@ export interface ColumnInfo {
   type: string;
   nullable: boolean;
   default?: string;
+  description?: string;
 }
 
 export interface ForeignKeyInfo {

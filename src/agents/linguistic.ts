@@ -8,19 +8,60 @@ import {
   LinguisticAgentOutput,
   LearningEntry,
   MissingColumnInfo,
+  DatabaseSchema,
 } from '../types';
 import { DatabaseAdapter } from '../database/adapter';
 import { BaseLLMProvider } from '../llm';
+import { ValueExplorerAgent } from './value-explorer';
+import { SchemaPruner } from '../rag/schema-pruner';
 import { logger } from '../utils/logger';
 
 export class LinguisticAgent implements Agent {
   name = 'LinguisticAgent';
   private llm: BaseLLMProvider;
   private adapter?: DatabaseAdapter;
+  private valueExplorer?: ValueExplorerAgent;
+  private schemaPruner: SchemaPruner;
+  private semanticContext: string = '';
+  private privacyAllowsExploration: boolean = true;
 
   constructor(llm: BaseLLMProvider, adapter?: DatabaseAdapter) {
     this.llm = llm;
     this.adapter = adapter;
+    this.schemaPruner = new SchemaPruner();
+    if (adapter) {
+      this.valueExplorer = new ValueExplorerAgent(adapter);
+    }
+  }
+
+  /**
+   * Set semantic model context for enriched prompts
+   */
+  setSemanticContext(context: string): void {
+    this.semanticContext = context;
+  }
+
+  /**
+   * Set privacy mode (disables value exploration in strict/schema-only)
+   */
+  setPrivacyMode(mode: 'strict' | 'schema-only' | 'permissive'): void {
+    this.privacyAllowsExploration = mode === 'permissive';
+  }
+
+  /**
+   * Generate SQL with a specific temperature (for multi-candidate)
+   */
+  async generateWithTemperature(
+    queryText: string,
+    schema: DatabaseSchema,
+    learningHistory: LearningEntry[],
+    temperature: number
+  ): Promise<string> {
+    const schemaText = this.schemaPruner.prune(schema, queryText);
+    const examples = this.getRelevantExamples(queryText, learningHistory);
+
+    const result = await this.generateSQL(queryText, schemaText, examples, undefined, temperature);
+    return result.sql;
   }
 
   /**
@@ -34,8 +75,8 @@ export class LinguisticAgent implements Agent {
     }, 'Processing natural language query');
 
     try {
-      // Get schema as text
-      const schemaText = this.formatSchema(schema);
+      // Get schema as text (pruned for large schemas)
+      const schemaText = this.schemaPruner.prune(schema, query.text);
 
       // Get relevant examples from learning history
       const examples = this.getRelevantExamples(
@@ -46,8 +87,24 @@ export class LinguisticAgent implements Agent {
       // Extract conversation context if available
       const conversationContext = query.context?.conversationContext;
 
+      // Explore actual DB values for filter terms (if privacy allows)
+      let valueContext = '';
+      if (this.valueExplorer && this.privacyAllowsExploration) {
+        try {
+          const exploredValues = await this.valueExplorer.explore(query.text, schema);
+          valueContext = this.valueExplorer.formatForPrompt(exploredValues);
+        } catch (err) {
+          logger.debug({ err }, 'Value exploration failed, continuing without');
+        }
+      }
+
       // Generate SQL using LLM
-      const result = await this.generateSQL(query.text, schemaText, examples, conversationContext);
+      const result = await this.generateSQL(
+        query.text,
+        schemaText + valueContext + this.semanticContext,
+        examples,
+        conversationContext
+      );
 
       logger.debug({
         confidence: result.confidence,
@@ -83,7 +140,8 @@ export class LinguisticAgent implements Agent {
     query: string,
     schema: string,
     examples: string,
-    conversationContext?: string
+    conversationContext?: string,
+    temperature?: number
   ): Promise<{
     sql: string;
     confidence: number;
@@ -169,7 +227,10 @@ Valid PostgreSQL, performance-optimized, handle NULLs, use DISTINCT and ORDER BY
       },
     ];
 
-    const response = await this.llm.generateCompletion(messages);
+    const response = await this.llm.generateCompletion(
+      messages,
+      temperature !== undefined ? { temperature } : undefined
+    );
 
     try {
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);
@@ -204,9 +265,9 @@ Valid PostgreSQL, performance-optimized, handle NULLs, use DISTINCT and ORDER BY
   }
 
   /**
-   * Format database schema for LLM
+   * Format database schema for LLM (legacy, kept for compatibility)
    */
-  private formatSchema(schema: any): string {
+  formatSchema(schema: any): string {
     let text = 'Database Schema:\n\n';
 
     if (schema.tables) {

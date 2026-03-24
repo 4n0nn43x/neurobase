@@ -85,11 +85,14 @@ export function loadConfig(): Config {
       enableOptimization: getEnvVarBoolean('ENABLE_OPTIMIZATION', true),
       enableSchemaSuggestions: getEnvVarBoolean('ENABLE_SCHEMA_SUGGESTIONS', true),
       enableQueryCache: getEnvVarBoolean('ENABLE_QUERY_CACHE', true),
+      enableSelfCorrection: getEnvVarBoolean('ENABLE_SELF_CORRECTION', true),
+      enableMultiCandidate: getEnvVarBoolean('ENABLE_MULTI_CANDIDATE', false),
     },
     security: {
       apiRateLimit: getEnvVarNumber('API_RATE_LIMIT', 100),
       readonlyMode: getEnvVarBoolean('READONLY_MODE', false),
       maxQueryTime: getEnvVarNumber('MAX_QUERY_TIME', 30000),
+      privacyMode: (getEnvVar('PRIVACY_MODE', 'schema-only') as 'strict' | 'schema-only' | 'permissive'),
     },
   };
 

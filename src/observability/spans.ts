@@ -15,7 +15,13 @@ export type SpanName =
   | 'memory.store'
   | 'memory.retrieve'
   | 'security.analyze'
-  | 'sandbox.test';
+  | 'sandbox.test'
+  | 'correction.loop'
+  | 'candidate.select'
+  | 'value.explore'
+  | 'schema.prune'
+  | 'diagnostic.search'
+  | 'explainer.generate';
 
 /**
  * Start a new span for a NeuroBase operation

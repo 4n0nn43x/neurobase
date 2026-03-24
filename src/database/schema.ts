@@ -71,6 +71,7 @@ export class SchemaIntrospector {
           type: c.type,
           nullable: c.nullable,
           default: c.default,
+          description: c.description,
         })),
         primaryKeys,
         foreignKeys: foreignKeys.map(fk => ({

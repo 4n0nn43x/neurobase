@@ -50,12 +50,15 @@ export interface FeatureFlags {
   enableOptimization: boolean;
   enableSchemaSuggestions: boolean;
   enableQueryCache: boolean;
+  enableSelfCorrection: boolean;
+  enableMultiCandidate: boolean;
 }
 
 export interface SecurityConfig {
   apiRateLimit: number;
   readonlyMode: boolean;
   maxQueryTime: number;
+  privacyMode?: 'strict' | 'schema-only' | 'permissive';
 }
 
 // Query Types
@@ -87,6 +90,66 @@ export interface QueryResult {
   explanation?: string;
   suggestions?: string[];
   learned?: boolean;
+  corrected?: boolean;
+  correctionAttempts?: CorrectionAttempt[];
+}
+
+// Self-correction types (Phase 1A)
+export interface CorrectionAttempt {
+  attempt: number;
+  sql: string;
+  error: string;
+  temperature: number;
+}
+
+export interface SelfCorrectionResult {
+  success: boolean;
+  finalSQL: string;
+  attempts: CorrectionAttempt[];
+  originalError: string;
+}
+
+// Semantic model types (Phase 2B)
+export interface SemanticModel {
+  entities: SemanticEntity[];
+  version?: string;
+}
+
+export interface SemanticEntity {
+  name: string;
+  table: string;
+  description?: string;
+  metrics?: SemanticMetric[];
+  relationships?: SemanticRelationship[];
+}
+
+export interface SemanticMetric {
+  name: string;
+  expression: string;
+  description?: string;
+}
+
+export interface SemanticRelationship {
+  target: string;
+  type: 'one_to_one' | 'one_to_many' | 'many_to_many';
+  join: string;
+}
+
+// Diagnostic types (Phase 4A)
+export interface DiagnosticNode {
+  id: string;
+  name: string;
+  query: string;
+  condition: (result: any) => boolean;
+  children?: DiagnosticNode[];
+  recommendation?: string;
+}
+
+export interface DiagnosticResult {
+  rootCause: string;
+  path: string[];
+  recommendations: string[];
+  details: Record<string, any>;
 }
 
 export interface QueryAnalysis {
