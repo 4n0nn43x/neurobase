@@ -445,11 +445,27 @@ MIT — see [LICENSE](LICENSE).
 
 ---
 
-## Links
+## Documentation
+
+### English
 
 - [Architecture Guide](docs/architecture.md)
 - [API Reference](docs/api-reference.md)
 - [Multi-Agent System](docs/multi-agent-system.md)
 - [Installation Guide](docs/installation.md)
 - [Quick Start](docs/quickstart.md)
+
+### Francais
+
+- [Guide d'architecture](docs/fr/architecture.md)
+- [Reference API](docs/fr/api-reference.md)
+- [Systeme multi-agent](docs/fr/multi-agent-system.md)
+- [Guide d'installation](docs/fr/installation.md)
+- [Demarrage rapide](docs/fr/quickstart.md)
+
+---
+
+## Links
+
+- [GitHub](https://github.com/4n0nn43x/neurobase)
 - [Issues](https://github.com/4n0nn43x/neurobase/issues)
