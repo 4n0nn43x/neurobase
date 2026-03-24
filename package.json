@@ -4,6 +4,19 @@
   "description": "An intelligent, self-learning conversational database built on Agentic Postgres",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "neurobase": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "sql",
+    "neurobase.semantic.example.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/cli.ts",
@@ -44,17 +57,25 @@
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
+    "@clack/prompts": "^1.1.0",
     "@modelcontextprotocol/sdk": "^1.20.2",
     "@xenova/transformers": "^2.17.2",
+    "boxen": "^8.0.1",
+    "cfonts": "^3.3.1",
     "chalk": "^4.1.2",
+    "cli-highlight": "^2.1.11",
     "cli-table3": "^0.6.5",
     "commander": "^12.1.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "express-rate-limit": "^7.4.1",
+    "gradient-string": "^3.0.0",
     "helmet": "^8.0.0",
     "inquirer": "^8.2.6",
+    "listr2": "^10.2.1",
+    "log-update": "^7.2.0",
+    "marked-terminal": "^7.3.0",
     "node-sql-parser": "^5.4.0",
     "ollama": "^0.5.13",
     "openai": "^4.73.0",
@@ -64,6 +85,7 @@
     "pino": "^9.5.0",
     "pino-pretty": "^13.0.0",
     "prompts": "^2.4.2",
+    "terminal-link": "^5.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

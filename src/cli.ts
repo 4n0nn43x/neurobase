@@ -2,26 +2,44 @@
 
 /**
  * NeuroBase Interactive CLI
+ * Rich terminal interface with syntax highlighting, gradient branding, and interactive prompts
  */
 
 import { Command } from 'commander';
 import inquirer from 'inquirer';
-import chalk from 'chalk';
-import ora from 'ora';
-import Table from 'cli-table3';
 import * as fs from 'fs';
 import * as path from 'path';
 import { NeuroBase } from './core/neurobase';
 import { config } from './config';
 import { AdapterFactory } from './database/adapter-factory';
 import { DatabaseForkManager } from './database/fork';
+import {
+  showBanner,
+  showConnectionInfo,
+  showQuickHelp,
+  renderSQL,
+  renderResultTable,
+  renderResultMeta,
+  renderError,
+  renderSuccess,
+  renderInfo,
+  renderConversation,
+  renderClarification,
+  renderSchemaOverview,
+  renderStats,
+  renderHelp,
+  colors,
+  separator,
+  NeuroSpinner,
+} from './ui';
+import { runSetupWizard } from './ui/setup-wizard';
 
 const program = new Command();
 
 program
   .name('neurobase')
   .description('Intelligent, self-learning conversational database')
-  .version('1.0.0');
+  .version('3.0.0');
 
 program
   .command('interactive')
@@ -34,11 +52,18 @@ program
 program
   .command('query <text>')
   .alias('q')
-  .description('Execute a single natural language query')
-  .option('-e, --explain', 'Show query explanation')
-  .option('-s, --sql', 'Show generated SQL')
-  .action(async (text: string, options) => {
+  .description('Run a single query')
+  .option('--sql', 'Show generated SQL')
+  .option('--explain', 'Show explanation')
+  .action(async (text: string, options: { sql?: boolean; explain?: boolean }) => {
     await runSingleQuery(text, options);
+  });
+
+program
+  .command('setup')
+  .description('Interactive setup wizard — configure database and LLM')
+  .action(async () => {
+    await runSetupWizard();
   });
 
 program
@@ -52,81 +77,57 @@ program
   .command('stats')
   .description('Show database statistics')
   .action(async () => {
-    await showStats();
+    await showStatsCommand();
+  });
+
+program
+  .command('serve')
+  .description('Start the REST API server')
+  .action(async () => {
+    // Delegate to the API module
+    await import('./api');
   });
 
 program.parse();
 
-// Conversation context to remember recent queries
+// Conversation context
 const conversationHistory: Array<{ query: string; sql?: string; timestamp: Date }> = [];
 
-// History file path
+// History persistence
 const HISTORY_FILE = path.join(process.cwd(), '.neurobase', 'history.txt');
 const HISTORY_DIR = path.dirname(HISTORY_FILE);
 
-/**
- * Load command history from file
- */
 function loadHistory(): string[] {
   try {
     if (!fs.existsSync(HISTORY_DIR)) {
       fs.mkdirSync(HISTORY_DIR, { recursive: true });
     }
     if (fs.existsSync(HISTORY_FILE)) {
-      const content = fs.readFileSync(HISTORY_FILE, 'utf-8');
-      // Return in chronological order (oldest first in file)
-      // Will be reversed when passed to readline
-      return content.split('\n').filter(line => line.trim());
+      return fs.readFileSync(HISTORY_FILE, 'utf-8').split('\n').filter(line => line.trim());
     }
-  } catch (error) {
-    // Ignore errors
-  }
+  } catch { /* ignore */ }
   return [];
 }
 
-/**
- * Save command to history file
- */
 function saveToHistory(command: string): void {
   try {
     if (!fs.existsSync(HISTORY_DIR)) {
       fs.mkdirSync(HISTORY_DIR, { recursive: true });
     }
-
-    // Load existing history
     let history: string[] = [];
     if (fs.existsSync(HISTORY_FILE)) {
-      const content = fs.readFileSync(HISTORY_FILE, 'utf-8');
-      history = content.split('\n').filter(line => line.trim());
+      history = fs.readFileSync(HISTORY_FILE, 'utf-8').split('\n').filter(line => line.trim());
     }
-
-    // Remove duplicate if exists
     history = history.filter(cmd => cmd !== command);
-
-    // Add new command at the end (most recent)
     history.push(command);
-
-    // Keep only last 100 commands
-    if (history.length > 100) {
-      history = history.slice(-100);
-    }
-
-    // Save back to file
+    if (history.length > 100) history = history.slice(-100);
     fs.writeFileSync(HISTORY_FILE, history.join('\n') + '\n', 'utf-8');
-  } catch (error) {
-    // Ignore errors
-  }
+  } catch { /* ignore */ }
 }
 
-/**
- * Create an inquirer-compatible history plugin
- */
 class HistoryPrompt {
   private history: string[];
-
-  constructor() {
-    this.history = loadHistory();
-  }
+  constructor() { this.history = loadHistory(); }
 
   async prompt(): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -135,1174 +136,703 @@ class HistoryPrompt {
         output: process.stdout,
         historySize: 100,
       });
-
-      // Load history into readline
-      // readline expects: [most recent, ..., oldest]
-      // this.history is: [oldest, ..., most recent] from file
-      // So we need to reverse
       (rl as any).history = [...this.history].reverse();
-
-      rl.question(chalk.green('NeuroBase> '), (answer: string) => {
-        rl.close();
-        resolve(answer);
-      });
-
+      rl.question(
+        colors.primary('  ') + colors.highlight('neurobase') + colors.dim(' > '),
+        (answer: string) => { rl.close(); resolve(answer); }
+      );
       rl.on('error', reject);
     });
   }
 }
 
-/**
- * Interactive mode
- */
+// ─────────────────────────────────────────────────────────────
+// Interactive Mode
+// ─────────────────────────────────────────────────────────────
+
 async function runInteractiveMode(): Promise<void> {
-  // Set quiet mode for interactive session (suppress INFO/WARN logs)
   process.env.NEUROBASE_QUIET = 'true';
 
-  console.log(chalk.cyan.bold('\n🧠 NeuroBase - Intelligent Database Interface\n'));
+  // Check if .env exists, offer setup if not
+  if (!fs.existsSync(path.join(process.cwd(), '.env'))) {
+    console.log();
+    renderInfo('No .env file found. Running setup wizard...');
+    console.log();
+    await runSetupWizard();
+    return;
+  }
 
-  const spinner = ora('Initializing NeuroBase...').start();
+  showBanner('3.0.0');
+
+  const spinner = new NeuroSpinner('Connecting to database').start();
 
   try {
     const nb = new NeuroBase(config);
+    spinner.update('Initializing schema');
     await nb.initialize();
 
-    spinner.succeed('NeuroBase initialized');
+    spinner.succeed('Connected');
 
-    // Show welcome message
-    console.log(chalk.gray('\nType your questions in natural language.'));
-    console.log(chalk.gray('Commands: .exit, .help, .schema, .stats, .clear, .fork, .forks\n'));
+    // Show connection panel
+    const features: string[] = [];
+    if (config.features.enableLearning) features.push('learning');
+    if (config.features.enableOptimization) features.push('optimization');
+    if (config.features.enableSelfCorrection) features.push('self-correction');
+    if (config.features.enableMultiCandidate) features.push('multi-candidate');
+
+    showConnectionInfo({
+      provider: config.llm.provider,
+      model: config.llm.anthropic?.model || config.llm.openai?.model || config.llm.ollama?.model,
+      database: config.database.connectionString.replace(/\/\/[^:]+:[^@]+@/, '//***:***@'),
+      engine: config.database.engine,
+      mode: config.neurobase.mode,
+      features,
+    });
+
+    showQuickHelp();
+    console.log(separator());
+    console.log();
 
     const historyPrompt = new HistoryPrompt();
-    let continueSession = true;
+    let running = true;
 
-    while (continueSession) {
+    while (running) {
       const query = await historyPrompt.prompt();
-      const trimmedQuery = query.trim();
+      const trimmed = query.trim();
+      if (!trimmed) continue;
 
-      if (!trimmedQuery) continue;
+      switch (trimmed) {
+        case '.exit':
+          console.log();
+          renderSuccess('Goodbye!');
+          console.log();
+          await nb.close();
+          running = false;
+          continue;
 
-      // Handle special commands
-      if (trimmedQuery === '.exit') {
-        console.log(chalk.yellow('\nGoodbye!\n'));
-        await nb.close();
-        continueSession = false;
-        continue;
-      }
+        case '.help':
+          renderHelp();
+          continue;
 
-      if (trimmedQuery === '.help') {
-        showHelp();
-        continue;
-      }
+        case '.schema':
+          await showSchemaCommand(nb);
+          continue;
 
-      if (trimmedQuery === '.schema') {
-        await showSchema(nb);
-        continue;
-      }
+        case '.stats':
+          await displayStatsCommand(nb);
+          continue;
 
-      if (trimmedQuery === '.stats') {
-        await displayStats(nb);
-        continue;
-      }
+        case '.clear':
+          console.clear();
+          conversationHistory.length = 0;
+          try { if (fs.existsSync(HISTORY_FILE)) fs.unlinkSync(HISTORY_FILE); } catch { /* ignore */ }
+          showBanner('3.0.0');
+          renderInfo('Screen and history cleared');
+          console.log();
+          continue;
 
-      if (trimmedQuery === '.clear') {
-        console.clear();
-        // Clear conversation context
-        conversationHistory.length = 0;
-        // Clear history file
-        try {
-          if (fs.existsSync(HISTORY_FILE)) {
-            fs.unlinkSync(HISTORY_FILE);
+        case '.fork':
+          await createFork();
+          continue;
+
+        case '.forks':
+          await listForks();
+          continue;
+
+        default:
+          if (trimmed.startsWith('.fork-delete ')) {
+            const forkId = trimmed.split(' ')[1];
+            if (forkId) await deleteFork(forkId);
+            else renderError('Usage: .fork-delete <fork-id>');
+            continue;
           }
-        } catch (error) {
-          // Ignore errors
-        }
-        console.log(chalk.gray('History cleared\n'));
-        continue;
       }
 
-      if (trimmedQuery === '.fork') {
-        await createFork();
-        continue;
-      }
-
-      if (trimmedQuery === '.forks') {
-        await listForks();
-        continue;
-      }
-
-      if (trimmedQuery.startsWith('.fork-delete ')) {
-        const forkId = trimmedQuery.split(' ')[1];
-        if (forkId) {
-          await deleteFork(forkId);
-        } else {
-          console.log(chalk.red('\nUsage: .fork-delete <fork-id>\n'));
-        }
-        continue;
-      }
-
-      // Save to history (except special commands)
-      saveToHistory(trimmedQuery);
-
-      // Execute query with conversation context
-      await executeQuery(nb, trimmedQuery, conversationHistory);
+      saveToHistory(trimmed);
+      await executeQuery(nb, trimmed, conversationHistory);
     }
   } catch (error) {
-    spinner.fail('Failed to initialize NeuroBase');
-    console.error(chalk.red('\nError:'), error instanceof Error ? error.message : error);
+    spinner.fail('Failed to initialize');
+    renderError(
+      error instanceof Error ? error.message : String(error),
+      'Check your .env configuration. Run `neurobase setup` to reconfigure.'
+    );
     process.exit(1);
   }
 }
 
-/**
- * Execute a query and display results
- */
+// ─────────────────────────────────────────────────────────────
+// Query Execution
+// ─────────────────────────────────────────────────────────────
+
 async function executeQuery(
   nb: NeuroBase,
   query: string,
-  conversationHistory: Array<{ query: string; sql?: string; timestamp: Date }>
+  history: Array<{ query: string; sql?: string; timestamp: Date }>
 ): Promise<void> {
-  const spinner = ora('Analyzing query...').start();
+  const spinner = new NeuroSpinner('Analyzing query').start();
 
   try {
-    // Build conversation context for the LLM
-    const recentContext = conversationHistory.slice(-3).map(entry =>
+    const recentContext = history.slice(-3).map(entry =>
       `User: "${entry.query}"\nSQL: ${entry.sql || 'N/A'}`
     ).join('\n\n');
 
-    // First, try to generate the query to check for missing data
     const linguisticResult = await (nb as any).linguisticAgent.process({
       query: {
         text: query,
         context: {
-          previousQueries: conversationHistory.map(e => e.query),
-          conversationContext: recentContext
-        }
+          previousQueries: history.map(e => e.query),
+          conversationContext: recentContext,
+        },
       },
       schema: await (nb as any).schema.getSchema(),
       learningHistory: [],
     });
 
-    // Check if AI detected conversational input (not a SQL query)
+    // Conversational response
     if (linguisticResult.isConversational && linguisticResult.conversationalResponse) {
-      spinner.stop();
-      console.log(chalk.cyan(`\n${linguisticResult.conversationalResponse}\n`));
-
-      // Add to conversation history as conversational
-      conversationHistory.push({
-        query,
-        sql: undefined,
-        timestamp: new Date()
-      });
-      if (conversationHistory.length > 10) {
-        conversationHistory.shift();
-      }
+      spinner.clear();
+      renderConversation(linguisticResult.conversationalResponse);
+      history.push({ query, sql: undefined, timestamp: new Date() });
+      if (history.length > 10) history.shift();
       return;
     }
 
-    // Check if clarification is needed (ambiguous query)
+    // Clarification needed
     if (linguisticResult.needsClarification && linguisticResult.clarificationQuestion) {
-      spinner.stop();
-      await handleClarificationNeeded(nb, query, linguisticResult, conversationHistory);
+      spinner.clear();
+      await handleClarification(nb, query, linguisticResult, history);
       return;
     }
 
-    // Check if there are missing required columns
+    // Missing columns
     if (linguisticResult.missingData) {
-      spinner.stop();
-      console.log(chalk.yellow(`\n⚠️  Missing required information for table '${linguisticResult.missingData.table}'`));
-      console.log(chalk.gray(linguisticResult.missingData.reason + '\n'));
-
-      // Collect missing data from user
-      const collectedData = await collectMissingData(linguisticResult.missingData);
-
-      // Rebuild the query with the collected data
-      const updatedQuery = await buildQueryWithData(
-        linguisticResult.sql,
-        linguisticResult.missingData.table,
-        collectedData
-      );
-
-      console.log(chalk.blue('\n📝 Updated SQL:'));
-      console.log(chalk.gray(formatSQL(updatedQuery)));
-
-      // Ask for confirmation
-      const { confirm } = await inquirer.prompt([
-        {
-          type: 'confirm',
-          name: 'confirm',
-          message: 'Execute this query?',
-          default: true,
-        },
-      ]);
-
-      if (!confirm) {
-        console.log(chalk.yellow('\nQuery cancelled.\n'));
-        return;
-      }
-
-      spinner.start('Executing query...');
-      // Execute the updated SQL directly via the database connection
-      const db = (nb as any).db;
-      const startTime = Date.now();
-      const dbResult = await db.query(updatedQuery);
-      const executionTime = Date.now() - startTime;
-
-      spinner.stop();
-
-      displayQueryResults({
-        data: dbResult.rows,
-        sql: updatedQuery,
-        executionTime,
-        rowCount: dbResult.rowCount,
-        learned: false,
-      });
-
-      // Add to conversation history
-      conversationHistory.push({
-        query,
-        sql: updatedQuery,
-        timestamp: new Date()
-      });
-      // Keep only last 10 conversations
-      if (conversationHistory.length > 10) {
-        conversationHistory.shift();
-      }
+      spinner.clear();
+      await handleMissingData(nb, query, linguisticResult, history);
       return;
     }
 
-    const result = await nb.query(query);
-
-    spinner.stop();
-
-    // Show explanation
-    if (result.explanation) {
-      console.log(chalk.gray(`\n💡 ${result.explanation}`));
-    }
-
-    displayQueryResults(result);
-
-    // Add to conversation history
-    conversationHistory.push({
-      query,
-      sql: result.sql,
-      timestamp: new Date()
+    // Execute the query
+    spinner.update('Generating SQL');
+    const result = await nb.query({
+      text: query,
+      context: {
+        previousQueries: history.map(e => e.query),
+        conversationContext: recentContext,
+      },
     });
-    // Keep only last 10 conversations
-    if (conversationHistory.length > 10) {
-      conversationHistory.shift();
-    }
+
+    spinner.clear();
+
+    // Display results
+    console.log();
+    renderSQL(result.sql);
+    console.log();
+    renderResultTable(result.data);
+    console.log();
+    renderResultMeta({
+      rowCount: result.rowCount,
+      executionTime: result.executionTime,
+      learned: result.learned,
+      corrected: result.corrected,
+      explanation: result.explanation,
+    });
+    console.log();
+
+    // Update history
+    history.push({ query, sql: result.sql, timestamp: new Date() });
+    if (history.length > 10) history.shift();
+
   } catch (error) {
     spinner.fail('Query failed');
-    console.error(
-      chalk.red('\n❌ Error:'),
-      error instanceof Error ? error.message : error
-    );
-    console.log();
+    renderError(error instanceof Error ? error.message : String(error));
   }
 }
 
-/**
- * Display query results
- */
-function displayQueryResults(result: any): void {
-  // Show SQL
-  console.log(chalk.blue('\n📝 Generated SQL:'));
-  console.log(chalk.gray(formatSQL(result.sql)));
+// ─────────────────────────────────────────────────────────────
+// Clarification & Missing Data Handlers
+// ─────────────────────────────────────────────────────────────
 
-  // Show execution time
-  console.log(
-    chalk.gray(`\n⚡ Execution time: ${result.executionTime}ms`)
-  );
-
-  // Show results
-  if (result.data.length === 0) {
-    console.log(chalk.yellow('\n(No rows returned)\n'));
-  } else {
-    console.log(chalk.green(`\n📊 Results (${result.rowCount} rows):\n`));
-    displayTable(result.data);
-  }
-
-  // Show suggestions
-  if (result.suggestions && result.suggestions.length > 0) {
-    console.log(chalk.yellow('\n💡 Suggestions:'));
-    result.suggestions.forEach((s: string) => console.log(chalk.gray(`  - ${s}`)));
-    console.log();
-  }
-
-  // Show learning indicator
-  if (result.learned) {
-    console.log(chalk.green('✓ Learned from this interaction\n'));
-  }
-}
-
-/**
- * Helper function to pluralize table names intelligently
- */
-function pluralize(singular: string): string {
-  // Common irregular plurals
-  const irregularPlurals: Record<string, string> = {
-    'category': 'categories',
-    'person': 'people',
-    'child': 'children',
-    'man': 'men',
-    'woman': 'women',
-    'tooth': 'teeth',
-    'foot': 'feet',
-    'mouse': 'mice',
-    'goose': 'geese',
-  };
-
-  // Check for irregular plural
-  if (irregularPlurals[singular.toLowerCase()]) {
-    return irregularPlurals[singular.toLowerCase()];
-  }
-
-  // Regular pluralization rules
-  if (singular.endsWith('y')) {
-    // "company" -> "companies"
-    return singular.slice(0, -1) + 'ies';
-  } else if (singular.endsWith('s') || singular.endsWith('ss') ||
-             singular.endsWith('sh') || singular.endsWith('ch') ||
-             singular.endsWith('x') || singular.endsWith('z')) {
-    // "class" -> "classes", "box" -> "boxes"
-    return singular + 'es';
-  } else if (singular.endsWith('f')) {
-    // "leaf" -> "leaves"
-    return singular.slice(0, -1) + 'ves';
-  } else if (singular.endsWith('fe')) {
-    // "knife" -> "knives"
-    return singular.slice(0, -2) + 'ves';
-  } else {
-    // Default: just add 's'
-    return singular + 's';
-  }
-}
-
-/**
- * Intelligent placeholder value collection with foreign key detection and fuzzy matching
- */
-async function collectPlaceholderValue(
-  db: any,
-  placeholder: string,
-  _sql: string
-): Promise<string> {
-  // Detect if this is a foreign key (e.g., category_id, user_id)
-  const foreignKeyPattern = /^(\w+)_id$/;
-  const fkMatch = placeholder.match(foreignKeyPattern);
-
-  if (fkMatch) {
-    const referencedTable = pluralize(fkMatch[1]); // e.g., "category" -> "categories"
-
-    // Try to get existing values from the referenced table
-    try {
-      const result = await db.query(`
-        SELECT id, name
-        FROM ${referencedTable}
-        ORDER BY name
-        LIMIT 50
-      `);
-
-      if (result.rows.length > 0) {
-        // Show existing options with ability to create new
-        console.log(chalk.cyan(`\n📋 Available ${referencedTable}:\n`));
-
-        const choices = result.rows.map((row: any) => ({
-          name: `${row.name} (ID: ${row.id})`,
-          value: row.id.toString(),
-          short: row.name,
-        }));
-
-        // Add options to create new or enter custom ID
-        choices.push(new inquirer.Separator());
-        choices.push({
-          name: chalk.green(`➕ Create new ${fkMatch[1]}`),
-          value: '__CREATE_NEW__',
-          short: 'Create new',
-        });
-        choices.push({
-          name: chalk.gray('⌨️  Enter custom ID manually'),
-          value: '__CUSTOM_ID__',
-          short: 'Custom ID',
-        });
-
-        const { selection } = await inquirer.prompt<{ selection: string }>([
-          {
-            type: 'list',
-            name: 'selection',
-            message: `Select ${placeholder}:`,
-            choices,
-            pageSize: 15,
-          },
-        ]);
-
-        if (selection === '__CREATE_NEW__') {
-          // Create new entry in the referenced table
-          return await createNewReferenceEntry(db, referencedTable, fkMatch[1]);
-        } else if (selection === '__CUSTOM_ID__') {
-          const { customId } = await inquirer.prompt<{ customId: string }>([
-            {
-              type: 'input',
-              name: 'customId',
-              message: `Enter ${placeholder} (numeric ID):`,
-              validate: (input: string) => {
-                if (!input.trim()) return 'ID cannot be empty';
-                if (isNaN(Number(input))) return 'ID must be a number';
-                return true;
-              },
-            },
-          ]);
-          return customId;
-        } else {
-          return selection;
-        }
-      }
-    } catch (error) {
-      // Table might not exist or query failed, fall through to manual input
-      console.log(chalk.yellow(`⚠️  Could not fetch ${referencedTable}, entering manually`));
-    }
-  }
-
-  // For non-foreign-key fields or if FK detection failed
-  const { value } = await inquirer.prompt<{ value: string }>([
-    {
-      type: 'input',
-      name: 'value',
-      message: `Enter value for ${placeholder}:`,
-      validate: (input: string) => input.trim() !== '' || 'Value cannot be empty',
-    },
-  ]);
-
-  return value;
-}
-
-/**
- * Create a new entry in a referenced table (e.g., new category)
- */
-async function createNewReferenceEntry(
-  db: any,
-  tableName: string,
-  singularName: string
-): Promise<string> {
-  console.log(chalk.blue(`\n➕ Creating new ${singularName}:\n`));
-
-  // Collect name
-  const { name } = await inquirer.prompt<{ name: string }>([
-    {
-      type: 'input',
-      name: 'name',
-      message: `${singularName.charAt(0).toUpperCase() + singularName.slice(1)} name:`,
-      validate: (input: string) => input.trim() !== '' || 'Name cannot be empty',
-    },
-  ]);
-
-  // Check for similar existing entries using fuzzy matching
-  try {
-    const similarResult = await db.query(`
-      SELECT id, name,
-             SIMILARITY(LOWER(name), LOWER($1)) as similarity
-      FROM ${tableName}
-      WHERE LOWER(name) LIKE LOWER($1) || '%'
-         OR LOWER($1) LIKE LOWER(name) || '%'
-         OR SIMILARITY(LOWER(name), LOWER($1)) > 0.3
-      ORDER BY similarity DESC
-      LIMIT 5
-    `, [name]);
-
-    if (similarResult.rows.length > 0) {
-      console.log(chalk.yellow(`\n⚠️  Found similar ${tableName}:\n`));
-
-      const choices = similarResult.rows.map((row: any) => ({
-        name: `Use existing: ${row.name} (ID: ${row.id}) [${Math.round(row.similarity * 100)}% match]`,
-        value: row.id.toString(),
-        short: row.name,
-      }));
-
-      choices.push(new inquirer.Separator());
-      choices.push({
-        name: chalk.green(`Create new "${name}" anyway`),
-        value: '__CREATE_NEW__',
-        short: 'Create new',
-      });
-
-      const { choice } = await inquirer.prompt<{ choice: string }>([
-        {
-          type: 'list',
-          name: 'choice',
-          message: 'What would you like to do?',
-          choices,
-        },
-      ]);
-
-      if (choice !== '__CREATE_NEW__') {
-        return choice;
-      }
-    }
-  } catch (error) {
-    // SIMILARITY function might not be available, continue with creation
-    console.log(chalk.gray('(Fuzzy matching not available, creating new entry)'));
-  }
-
-  // Collect optional description
-  const { description } = await inquirer.prompt<{ description: string }>([
-    {
-      type: 'input',
-      name: 'description',
-      message: 'Description (optional):',
-      default: '',
-    },
-  ]);
-
-  // Insert the new entry
-  try {
-    const insertQuery = description
-      ? `INSERT INTO ${tableName} (name, description) VALUES ($1, $2) RETURNING id`
-      : `INSERT INTO ${tableName} (name) VALUES ($1) RETURNING id`;
-
-    const params = description ? [name, description] : [name];
-    const result = await db.query(insertQuery, params);
-
-    const newId = result.rows[0].id;
-    console.log(chalk.green(`\n✓ Created new ${singularName}: ${name} (ID: ${newId})\n`));
-
-    return newId.toString();
-  } catch (error: any) {
-    console.error(chalk.red(`\n❌ Failed to create ${singularName}: ${error.message}\n`));
-    throw error;
-  }
-}
-
-/**
- * Handle clarification needed for ambiguous queries
- */
-async function handleClarificationNeeded(
+async function handleClarification(
   nb: NeuroBase,
   originalQuery: string,
   linguisticResult: any,
-  conversationHistory: Array<{ query: string; sql?: string; timestamp: Date }>
+  history: Array<{ query: string; sql?: string; timestamp: Date }>
 ): Promise<void> {
-  console.log(chalk.yellow(`\n❓ ${linguisticResult.clarificationQuestion}\n`));
+  renderClarification(
+    linguisticResult.clarificationQuestion,
+    linguisticResult.suggestedInterpretations
+  );
 
-  // Show suggested interpretations if available
-  if (linguisticResult.suggestedInterpretations && linguisticResult.suggestedInterpretations.length > 0) {
-    console.log(chalk.cyan('Possible interpretations:\n'));
-
-    const choices = linguisticResult.suggestedInterpretations.map((interp: any, index: number) => ({
-      name: `${index + 1}. ${interp.description}`,
-      value: index,
+  if (linguisticResult.suggestedInterpretations?.length > 0) {
+    const choices = linguisticResult.suggestedInterpretations.map((interp: any, i: number) => ({
+      name: `${colors.accent(`${i + 1}.`)} ${interp.description}`,
+      value: i,
     }));
-
-    // Add option to provide more context
     choices.push({
-      name: chalk.gray('⚙️  I\'ll provide more details...'),
+      name: colors.dim('   Provide more details...'),
       value: -1,
     });
 
-    const { selectedIndex } = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'selectedIndex',
-        message: 'Which interpretation is correct?',
-        choices,
-      },
-    ]);
+    const { selectedIndex } = await inquirer.prompt([{
+      type: 'list',
+      name: 'selectedIndex',
+      message: colors.dim('Select interpretation:'),
+      choices,
+    }]);
 
     if (selectedIndex === -1) {
-      // User wants to provide more details
-      console.log(chalk.cyan('\n💬 Please provide more details about what you want:\n'));
-      const { additionalContext } = await inquirer.prompt([
-        {
-          type: 'input',
-          name: 'additionalContext',
-          message: 'Additional details:',
-          validate: (input: string) => input.trim() !== '' || 'Please provide some details',
-        },
-      ]);
-
-      // Re-run the query with additional context
-      const enhancedQuery = `${originalQuery}. ${additionalContext}`;
-      console.log(chalk.gray(`\n📝 Enhanced query: "${enhancedQuery}"\n`));
-      await executeQuery(nb, enhancedQuery, conversationHistory);
+      const { additionalContext } = await inquirer.prompt([{
+        type: 'input',
+        name: 'additionalContext',
+        message: colors.dim('Additional details:'),
+        validate: (input: string) => input.trim() !== '' || 'Please provide details',
+      }]);
+      await executeQuery(nb, `${originalQuery}. ${additionalContext}`, history);
       return;
     }
 
-    // User selected an interpretation
-    const selectedInterpretation = linguisticResult.suggestedInterpretations[selectedIndex];
-    console.log(chalk.green(`\n✓ Selected: ${selectedInterpretation.description}\n`));
+    const selected = linguisticResult.suggestedInterpretations[selectedIndex];
+    renderSuccess(`Selected: ${selected.description}`);
 
-    // Check if the selected SQL contains placeholders (e.g., [price], [category_id])
-    const placeholderPattern = /\[(\w+)\]/g;
-    const placeholdersFound = selectedInterpretation.sql.match(placeholderPattern);
+    let finalSQL = selected.sql;
+    const placeholders = finalSQL.match(/\[(\w+)\]/g);
 
-    let finalSQL = selectedInterpretation.sql;
-
-    if (placeholdersFound && placeholdersFound.length > 0) {
-      // SQL contains placeholders, need to collect values intelligently
-      console.log(chalk.yellow('\n⚠️  This query requires additional information:\n'));
-
-      const collectedValues: Record<string, string> = {};
-
-      // Extract unique placeholder names
-      const placeholderNames: string[] = Array.from(
-        new Set(placeholdersFound.map((p: string) => p.replace(/[\[\]]/g, '')))
-      );
-
-      const db = (nb as any).db;
-
-      for (const placeholder of placeholderNames) {
-        const value = await collectPlaceholderValue(db, placeholder, selectedInterpretation.sql);
-        collectedValues[placeholder] = value;
-      }
-
-      // Replace all placeholders with collected values
-      finalSQL = selectedInterpretation.sql;
-      for (const [placeholder, value] of Object.entries(collectedValues)) {
-        // Properly quote the value if it's not a number
-        const quotedValue = isNaN(Number(value)) && value !== 'true' && value !== 'false'
-          ? `'${value.replace(/'/g, "''")}'`
-          : value;
-
-        finalSQL = finalSQL.replace(
-          new RegExp(`\\[${placeholder}\\]`, 'g'),
-          quotedValue
-        );
-      }
-
-      console.log(chalk.blue('\n📝 Final SQL:'));
-      console.log(chalk.gray(formatSQL(finalSQL)));
-
-      // Ask for confirmation
-      const { confirm } = await inquirer.prompt([
-        {
-          type: 'confirm',
-          name: 'confirm',
-          message: 'Execute this query?',
-          default: true,
-        },
-      ]);
-
-      if (!confirm) {
-        console.log(chalk.yellow('\nQuery cancelled.\n'));
-        return;
-      }
-    }
-
-    // Execute the final SQL
-    const spinner = ora('Executing query...').start();
-    try {
-      const db = (nb as any).db;
-      const startTime = Date.now();
-      const dbResult = await db.query(finalSQL);
-      const executionTime = Date.now() - startTime;
-
-      spinner.stop();
-
-      displayQueryResults({
-        data: dbResult.rows,
-        sql: finalSQL,
-        executionTime,
-        rowCount: dbResult.rowCount,
-        learned: false,
-      });
-
-      // Add to conversation history
-      conversationHistory.push({
-        query: originalQuery,
-        sql: finalSQL,
-        timestamp: new Date(),
-      });
-      if (conversationHistory.length > 10) {
-        conversationHistory.shift();
-      }
-    } catch (error) {
-      spinner.fail('Query failed');
-      console.error(
-        chalk.red('\n❌ Error:'),
-        error instanceof Error ? error.message : error
-      );
-    }
-  } else {
-    // No suggested interpretations, ask for clarification
-    console.log(chalk.cyan('\n💬 Please rephrase your question with more details:\n'));
-    const { clarifiedQuery } = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'clarifiedQuery',
-        message: 'Your clarified question:',
-        validate: (input: string) => input.trim() !== '' || 'Please provide a question',
-      },
-    ]);
-
-    // Re-execute with clarified query
-    await executeQuery(nb, clarifiedQuery, conversationHistory);
-  }
-}
-
-/**
- * Collect missing data from user interactively
- */
-async function collectMissingData(missingData: any): Promise<Record<string, string>> {
-  const collectedData: Record<string, string> = {};
-
-  console.log(chalk.cyan('Please provide the following information:\n'));
-
-  for (const columnInfo of missingData.columns) {
-    const questions: any[] = [];
-
-    if (columnInfo.possibleValues && columnInfo.possibleValues.length > 0) {
-      // Use list selection for predefined values
-      questions.push({
-        type: 'list',
-        name: columnInfo.column,
-        message: `${columnInfo.column} (${columnInfo.type}):`,
-        choices: [...columnInfo.possibleValues, new inquirer.Separator(), 'Custom value...'],
-      });
-
-      const answer = await inquirer.prompt(questions);
-
-      if (answer[columnInfo.column] === 'Custom value...') {
-        const { customValue } = await inquirer.prompt([
-          {
-            type: 'input',
-            name: 'customValue',
-            message: `Enter custom ${columnInfo.column}:`,
-            validate: (input: string) => input.trim() !== '' || 'Value cannot be empty',
-          },
-        ]);
-        collectedData[columnInfo.column] = customValue;
-      } else {
-        collectedData[columnInfo.column] = answer[columnInfo.column];
-      }
-    } else {
-      // Use input for free-form entry
-      const answer = await inquirer.prompt([
-        {
-          type: 'input',
-          name: columnInfo.column,
-          message: `${columnInfo.column} (${columnInfo.type}):`,
-          default: columnInfo.defaultValue,
-          validate: (input: string) => input.trim() !== '' || 'Value cannot be empty',
-        },
-      ]);
-      collectedData[columnInfo.column] = answer[columnInfo.column];
-    }
-  }
-
-  return collectedData;
-}
-
-/**
- * Build updated SQL query with collected data
- */
-async function buildQueryWithData(
-  originalSQL: string,
-  tableName: string,
-  collectedData: Record<string, string>
-): Promise<string> {
-  // Parse the original INSERT statement
-  const insertMatch = originalSQL.match(/INSERT\s+INTO\s+(\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)/i);
-
-  if (!insertMatch) {
-    return originalSQL;
-  }
-
-  const columns = insertMatch[2].split(',').map((c) => c.trim());
-  const values = insertMatch[3].split(',').map((v) => v.trim());
-
-  // Add missing columns and values
-  const newColumns = [...columns];
-  const newValues = [...values];
-
-  for (const [column, value] of Object.entries(collectedData)) {
-    newColumns.push(column);
-    // Properly quote the value
-    const quotedValue = isNaN(Number(value)) && value !== 'true' && value !== 'false'
-      ? `'${value.replace(/'/g, "''")}'`
-      : value;
-    newValues.push(quotedValue);
-  }
-
-  return `INSERT INTO ${tableName} (${newColumns.join(', ')}) VALUES (${newValues.join(', ')})`;
-}
-
-/**
- * Display results as a table
- */
-function displayTable(data: any[]): void {
-  if (data.length === 0) return;
-
-  const columns = Object.keys(data[0]);
-  const table = new Table({
-    head: columns.map((c) => chalk.cyan(c)),
-    style: {
-      head: [],
-      border: ['gray'],
-    },
-  });
-
-  // Limit to first 50 rows
-  const displayData = data.slice(0, 50);
-
-  for (const row of displayData) {
-    table.push(columns.map((col) => formatValue(row[col])));
-  }
-
-  console.log(table.toString());
-
-  if (data.length > 50) {
-    console.log(chalk.gray(`\n... and ${data.length - 50} more rows`));
-  }
-}
-
-/**
- * Format a value for display
- */
-function formatValue(value: any): string {
-  if (value === null || value === undefined) {
-    return chalk.gray('NULL');
-  }
-
-  if (typeof value === 'object') {
-    if (value instanceof Date) {
-      return value.toISOString();
-    }
-    return JSON.stringify(value);
-  }
-
-  return String(value);
-}
-
-/**
- * Format SQL for display
- */
-function formatSQL(sql: string): string {
-  return sql
-    .replace(/\b(SELECT|FROM|WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|ON|GROUP BY|ORDER BY|HAVING|LIMIT|OFFSET)\b/gi, (match) =>
-      chalk.bold(match.toUpperCase())
-    );
-}
-
-/**
- * Show help message
- */
-function showHelp(): void {
-  console.log(chalk.cyan('\n📖 NeuroBase Commands:\n'));
-  console.log('  .exit               - Exit NeuroBase');
-  console.log('  .help               - Show this help message');
-  console.log('  .schema             - Show database schema');
-  console.log('  .stats              - Show database statistics');
-  console.log('  .clear              - Clear screen');
-  console.log('  .fork               - Create a database fork for testing');
-  console.log('  .forks              - List all database services/forks');
-  console.log('  .fork-delete <id>   - Delete a database fork\n');
-
-  console.log(chalk.cyan('💡 Example Queries:\n'));
-  console.log('  "Show me all users"');
-  console.log('  "What are the top 5 products by sales?"');
-  console.log('  "How many orders were placed this week?"');
-  console.log('  "Show customers with no orders"\n');
-}
-
-/**
- * Show database schema
- */
-async function showSchema(nb: NeuroBase): Promise<void> {
-  const spinner = ora('Loading schema...').start();
-
-  try {
-    const schemaMermaid = await nb.getSchemaIntrospector().getSchemaAsMermaid();
-    spinner.stop();
-
-    console.log(chalk.cyan('\n📊 Database Schema (UML/ER Diagram):\n'));
-    console.log(chalk.gray('Copy the diagram below and paste it into https://mermaid.live for visualization\n'));
-    console.log(chalk.yellow('─'.repeat(80)));
-    console.log(schemaMermaid);
-    console.log(chalk.yellow('─'.repeat(80)));
-    console.log(chalk.gray('\n💡 Tip: You can also save this to a .mmd file and open it in VS Code with Mermaid extension\n'));
-  } catch (error) {
-    spinner.fail('Failed to load schema');
-    console.error(chalk.red('Error:'), error);
-  }
-}
-
-/**
- * Display database statistics
- */
-async function displayStats(nb: NeuroBase): Promise<void> {
-  const spinner = ora('Loading statistics...').start();
-
-  try {
-    const stats = await nb.getStats();
-    spinner.stop();
-
-    console.log(chalk.cyan('\n📊 Database Statistics:\n'));
-    console.log(`  Database size: ${chalk.green(stats.database.size)}`);
-    console.log(`  Tables: ${chalk.green(stats.database.tables)}`);
-    console.log(`  Active connections: ${chalk.green(stats.database.connections)}`);
-    console.log(`  Views: ${chalk.green(stats.schema.views)}`);
-    console.log(`  Functions: ${chalk.green(stats.schema.functions)}\n`);
-  } catch (error) {
-    spinner.fail('Failed to load statistics');
-    console.error(chalk.red('Error:'), error);
-  }
-}
-
-/**
- * Run a single query
- */
-async function runSingleQuery(
-  text: string,
-  options: { explain?: boolean; sql?: boolean }
-): Promise<void> {
-  const spinner = ora('Processing query...').start();
-
-  try {
-    const nb = new NeuroBase(config);
-    await nb.initialize();
-
-    const result = await nb.query(text);
-
-    spinner.stop();
-
-    if (options.sql || options.explain) {
-      if (options.explain && result.explanation) {
-        console.log(chalk.blue('\nExplanation:'), result.explanation);
-      }
-
-      if (options.sql) {
-        console.log(chalk.blue('\nSQL:'));
-        console.log(result.sql);
+    if (placeholders?.length > 0) {
+      const values = await collectPlaceholders(nb, placeholders, finalSQL);
+      for (const [key, val] of Object.entries(values)) {
+        const quoted = isNaN(Number(val)) && val !== 'true' && val !== 'false'
+          ? `'${val.replace(/'/g, "''")}'` : val;
+        finalSQL = finalSQL.replace(new RegExp(`\\[${key}\\]`, 'g'), quoted);
       }
 
       console.log();
+      renderSQL(finalSQL, 'Final SQL');
+
+      const { confirm } = await inquirer.prompt([{
+        type: 'confirm', name: 'confirm',
+        message: colors.dim('Execute?'), default: true,
+      }]);
+      if (!confirm) { renderInfo('Cancelled'); return; }
     }
 
-    displayTable(result.data);
+    // Execute
+    const execSpinner = new NeuroSpinner('Executing').start();
+    const db = (nb as any).db;
+    const startTime = Date.now();
+    const dbResult = await db.query(finalSQL);
+    execSpinner.clear();
 
+    console.log();
+    renderResultTable(dbResult.rows);
+    console.log();
+    renderResultMeta({ rowCount: dbResult.rowCount, executionTime: Date.now() - startTime });
+    console.log();
+
+    history.push({ query: originalQuery, sql: finalSQL, timestamp: new Date() });
+    if (history.length > 10) history.shift();
+  } else {
+    const { clarified } = await inquirer.prompt([{
+      type: 'input', name: 'clarified',
+      message: colors.dim('Rephrase your question:'),
+      validate: (input: string) => input.trim() !== '' || 'Required',
+    }]);
+    await executeQuery(nb, clarified, history);
+  }
+}
+
+async function handleMissingData(
+  nb: NeuroBase,
+  query: string,
+  linguisticResult: any,
+  history: Array<{ query: string; sql?: string; timestamp: Date }>
+): Promise<void> {
+  const missing = linguisticResult.missingData;
+  console.log();
+  renderInfo(`Missing required columns for '${missing.table}': ${missing.reason}`);
+  console.log();
+
+  const collectedData: Record<string, string> = {};
+  for (const col of missing.columns) {
+    if (col.possibleValues?.length > 0) {
+      const choices = [...col.possibleValues, new inquirer.Separator(), 'Custom value...'];
+      const { value } = await inquirer.prompt([{
+        type: 'list', name: 'value',
+        message: `${colors.dim(col.column)} ${colors.muted(`(${col.type})`)}:`,
+        choices,
+      }]);
+      if (value === 'Custom value...') {
+        const { custom } = await inquirer.prompt([{
+          type: 'input', name: 'custom',
+          message: `Enter ${col.column}:`,
+          validate: (i: string) => i.trim() !== '' || 'Required',
+        }]);
+        collectedData[col.column] = custom;
+      } else {
+        collectedData[col.column] = value;
+      }
+    } else {
+      const { value } = await inquirer.prompt([{
+        type: 'input', name: 'value',
+        message: `${colors.dim(col.column)} ${colors.muted(`(${col.type})`)}:`,
+        default: col.defaultValue,
+        validate: (i: string) => i.trim() !== '' || 'Required',
+      }]);
+      collectedData[col.column] = value;
+    }
+  }
+
+  const updatedSQL = buildQueryWithData(linguisticResult.sql, missing.table, collectedData);
+  console.log();
+  renderSQL(updatedSQL, 'Updated SQL');
+
+  const { confirm } = await inquirer.prompt([{
+    type: 'confirm', name: 'confirm',
+    message: colors.dim('Execute?'), default: true,
+  }]);
+
+  if (!confirm) { renderInfo('Cancelled'); return; }
+
+  const execSpinner = new NeuroSpinner('Executing').start();
+  const db = (nb as any).db;
+  const startTime = Date.now();
+  const dbResult = await db.query(updatedSQL);
+  execSpinner.clear();
+
+  console.log();
+  renderResultTable(dbResult.rows);
+  console.log();
+  renderResultMeta({ rowCount: dbResult.rowCount, executionTime: Date.now() - startTime });
+  console.log();
+
+  history.push({ query, sql: updatedSQL, timestamp: new Date() });
+  if (history.length > 10) history.shift();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Placeholder Collection (FK-aware)
+// ─────────────────────────────────────────────────────────────
+
+async function collectPlaceholders(
+  nb: NeuroBase,
+  placeholders: string[],
+  _sql: string
+): Promise<Record<string, string>> {
+  const names = Array.from(new Set(placeholders.map(p => p.replace(/[\[\]]/g, ''))));
+  const values: Record<string, string> = {};
+  const db = (nb as any).db;
+
+  for (const name of names) {
+    const fkMatch = name.match(/^(\w+)_id$/);
+    if (fkMatch) {
+      const refTable = pluralize(fkMatch[1]);
+      try {
+        const result = await db.query(`SELECT id, name FROM ${refTable} ORDER BY name LIMIT 50`);
+        if (result.rows.length > 0) {
+          const choices = result.rows.map((r: any) => ({
+            name: `${r.name} ${colors.dim(`(ID: ${r.id})`)}`,
+            value: r.id.toString(),
+            short: r.name,
+          }));
+          choices.push(new inquirer.Separator());
+          choices.push({ name: colors.success(`+ Create new ${fkMatch[1]}`), value: '__NEW__', short: 'New' });
+          choices.push({ name: colors.dim('  Enter ID manually'), value: '__CUSTOM__', short: 'Custom' });
+
+          const { sel } = await inquirer.prompt([{
+            type: 'list', name: 'sel',
+            message: `${colors.dim(name)}:`, choices, pageSize: 15,
+          }]);
+
+          if (sel === '__NEW__') {
+            values[name] = await createNewRefEntry(db, refTable, fkMatch[1]);
+          } else if (sel === '__CUSTOM__') {
+            const { id } = await inquirer.prompt([{
+              type: 'input', name: 'id', message: `Enter ${name}:`,
+              validate: (i: string) => !isNaN(Number(i)) || 'Must be a number',
+            }]);
+            values[name] = id;
+          } else {
+            values[name] = sel;
+          }
+          continue;
+        }
+      } catch { /* fall through */ }
+    }
+
+    const { val } = await inquirer.prompt([{
+      type: 'input', name: 'val',
+      message: `${colors.dim(name)}:`,
+      validate: (i: string) => i.trim() !== '' || 'Required',
+    }]);
+    values[name] = val;
+  }
+
+  return values;
+}
+
+async function createNewRefEntry(db: any, table: string, singular: string): Promise<string> {
+  const { name } = await inquirer.prompt([{
+    type: 'input', name: 'name',
+    message: `${singular.charAt(0).toUpperCase() + singular.slice(1)} name:`,
+    validate: (i: string) => i.trim() !== '' || 'Required',
+  }]);
+
+  // Check for similar entries
+  try {
+    const similar = await db.query(
+      `SELECT id, name FROM ${table} WHERE LOWER(name) LIKE LOWER($1) || '%' LIMIT 5`, [name]
+    );
+    if (similar.rows.length > 0) {
+      const choices = similar.rows.map((r: any) => ({
+        name: `Use existing: ${r.name} ${colors.dim(`(ID: ${r.id})`)}`,
+        value: r.id.toString(),
+      }));
+      choices.push(new inquirer.Separator());
+      choices.push({ name: colors.success(`Create "${name}" anyway`), value: '__CREATE__' });
+
+      const { choice } = await inquirer.prompt([{
+        type: 'list', name: 'choice', message: 'Similar entries found:', choices,
+      }]);
+      if (choice !== '__CREATE__') return choice;
+    }
+  } catch { /* no similarity support */ }
+
+  const { desc } = await inquirer.prompt([{
+    type: 'input', name: 'desc', message: 'Description (optional):', default: '',
+  }]);
+
+  const insertSQL = desc
+    ? `INSERT INTO ${table} (name, description) VALUES ($1, $2) RETURNING id`
+    : `INSERT INTO ${table} (name) VALUES ($1) RETURNING id`;
+  const params = desc ? [name, desc] : [name];
+  const result = await db.query(insertSQL, params);
+  const newId = result.rows[0].id;
+
+  renderSuccess(`Created ${singular}: ${name} (ID: ${newId})`);
+  return newId.toString();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Schema, Stats, Init Commands
+// ─────────────────────────────────────────────────────────────
+
+async function showSchemaCommand(nb: NeuroBase): Promise<void> {
+  const spinner = new NeuroSpinner('Loading schema').start();
+  try {
+    const schema = await nb.getSchemaIntrospector().getSchema();
+    spinner.clear();
+    renderSchemaOverview(schema);
+  } catch (error) {
+    spinner.fail('Failed to load schema');
+    renderError(error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function displayStatsCommand(nb: NeuroBase): Promise<void> {
+  const spinner = new NeuroSpinner('Loading statistics').start();
+  try {
+    const stats = await nb.getStats();
+    spinner.clear();
+    renderStats(stats);
+  } catch (error) {
+    spinner.fail('Failed');
+    renderError(error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function runSingleQuery(text: string, options: { explain?: boolean; sql?: boolean }): Promise<void> {
+  const spinner = new NeuroSpinner('Processing').start();
+  try {
+    const nb = new NeuroBase(config);
+    await nb.initialize();
+    const result = await nb.query(text);
+    spinner.clear();
+
+    if (options.sql) { renderSQL(result.sql); console.log(); }
+    if (options.explain && result.explanation) {
+      renderInfo(result.explanation);
+    }
+    renderResultTable(result.data);
+    console.log();
+    renderResultMeta({
+      rowCount: result.rowCount,
+      executionTime: result.executionTime,
+    });
+    console.log();
     await nb.close();
   } catch (error) {
     spinner.fail('Query failed');
-    console.error(chalk.red('\nError:'), error instanceof Error ? error.message : error);
+    renderError(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
 }
 
-/**
- * Initialize database
- */
 async function initializeDatabase(): Promise<void> {
-  const spinner = ora('Initializing database...').start();
-
+  const spinner = new NeuroSpinner('Initializing database').start();
   try {
     const nb = new NeuroBase(config);
     await nb.initialize();
-
-    spinner.succeed('Database initialized successfully');
-
+    spinner.succeed('Database initialized');
     await nb.close();
   } catch (error) {
     spinner.fail('Initialization failed');
-    console.error(chalk.red('\nError:'), error instanceof Error ? error.message : error);
+    renderError(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
 }
 
-/**
- * Show stats command
- */
-async function showStats(): Promise<void> {
+async function showStatsCommand(): Promise<void> {
   try {
     const nb = new NeuroBase(config);
     await nb.initialize();
-
-    await displayStats(nb);
-
+    await displayStatsCommand(nb);
     await nb.close();
   } catch (error) {
-    console.error(chalk.red('\nError:'), error instanceof Error ? error.message : error);
+    renderError(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
 }
 
-/**
- * Create a database fork
- */
+// ─────────────────────────────────────────────────────────────
+// Fork Management
+// ─────────────────────────────────────────────────────────────
+
 async function createFork(): Promise<void> {
   try {
     const adapter = AdapterFactory.create(config.database);
     await adapter.connect();
     const forkManager = new DatabaseForkManager(adapter);
 
-    console.log(chalk.blue('\n🍴 Create Database Fork\n'));
-    console.log(chalk.gray('Create a copy of your database for safe testing and experimentation.\n'));
+    console.log();
+    renderInfo('Create Database Fork');
+    console.log(colors.dim('  Create a copy of your database for safe testing.\n'));
 
-    // Ask for fork strategy
-    const { strategy } = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'strategy',
-        message: 'Fork strategy:',
-        choices: [
-          {
-            name: 'Current state (--now) - Fork the database as it is right now',
-            value: 'now',
-          },
-          {
-            name: 'Last snapshot (--last-snapshot) - Fork from the last backup (faster)',
-            value: 'last-snapshot',
-          },
-          {
-            name: 'Specific timestamp (--to-timestamp) - Fork from a specific point in time',
-            value: 'to-timestamp',
-          },
-        ],
-      },
-    ]);
+    const { strategy } = await inquirer.prompt([{
+      type: 'list', name: 'strategy', message: 'Fork strategy:',
+      choices: [
+        { name: 'Current state (template)', value: 'now' },
+        { name: 'Last snapshot', value: 'last-snapshot' },
+        { name: 'Point-in-time', value: 'to-timestamp' },
+      ],
+    }]);
 
     if (strategy === 'to-timestamp') {
-      await inquirer.prompt([
-        {
-          type: 'input',
-          name: 'timestampInput',
-          message: 'Enter timestamp (RFC3339 format, e.g., 2025-10-26T10:30:00Z):',
-          validate: (input: string) => {
-            try {
-              new Date(input);
-              return true;
-            } catch {
-              return 'Invalid timestamp format. Use RFC3339 format (e.g., 2025-10-26T10:30:00Z)';
-            }
-          },
-        },
-      ]);
+      await inquirer.prompt([{
+        type: 'input', name: 'ts',
+        message: 'Timestamp (RFC3339):',
+        validate: (i: string) => { try { new Date(i); return true; } catch { return 'Invalid format'; } },
+      }]);
     }
 
-    // Ask for optional name
-    const { name } = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'name',
-        message: 'Fork name (leave empty for auto-generated):',
-        default: '',
-      },
-    ]);
+    const { name } = await inquirer.prompt([{
+      type: 'input', name: 'name', message: 'Fork name (optional):', default: '',
+    }]);
 
-    const spinner = ora('Creating database fork...').start();
-
-    // Map legacy strategy names to adapter strategies
+    const spinner = new NeuroSpinner('Creating fork').start();
     const strategyMap: Record<string, 'snapshot' | 'copy' | 'template'> = {
-      'now': 'template',
-      'last-snapshot': 'snapshot',
-      'to-timestamp': 'copy',
+      'now': 'template', 'last-snapshot': 'snapshot', 'to-timestamp': 'copy',
     };
 
     const fork = await forkManager.createFork({
       strategy: strategyMap[strategy] || 'template',
       name: name || undefined,
     });
+    spinner.succeed('Fork created');
 
-    spinner.succeed('Database fork created successfully');
-
-    console.log(chalk.green('\n✅ Fork created:\n'));
-    console.log(chalk.gray(`  ID:         ${fork.id}`));
-    console.log(chalk.gray(`  Name:       ${fork.name}`));
-    console.log(chalk.gray(`  Status:     ${fork.status}`));
-    console.log(chalk.gray(`  Created:    ${fork.createdAt}\n`));
-    console.log(chalk.yellow('💡 Use .forks to see all your database forks'));
-    console.log(chalk.yellow('💡 Use .fork-delete <id> to delete a fork\n'));
-  } catch (error) {
-    console.error(chalk.red('\n❌ Error creating fork:'), error instanceof Error ? error.message : error);
     console.log();
+    console.log(`  ${colors.muted('ID')}       ${colors.text(fork.id)}`);
+    console.log(`  ${colors.muted('Name')}     ${colors.text(fork.name)}`);
+    console.log(`  ${colors.muted('Status')}   ${colors.success(fork.status)}`);
+    console.log();
+  } catch (error) {
+    renderError('Fork creation failed', error instanceof Error ? error.message : String(error));
   }
 }
 
-/**
- * List all database forks
- */
 async function listForks(): Promise<void> {
   try {
     const adapter = AdapterFactory.create(config.database);
     await adapter.connect();
     const forkManager = new DatabaseForkManager(adapter);
-    const spinner = ora('Loading database forks...').start();
-
+    const spinner = new NeuroSpinner('Loading forks').start();
     const services = await forkManager.listForks();
-
-    spinner.stop();
+    spinner.clear();
 
     if (services.length === 0) {
-      console.log(chalk.yellow('\nNo database services found.\n'));
+      renderInfo('No database forks found.');
       return;
     }
 
-    console.log(chalk.blue('\n🗄️  Database Services:\n'));
-
-    const table = new Table({
-      head: [
-        chalk.cyan('ID'),
-        chalk.cyan('Name'),
-        chalk.cyan('Status'),
-        chalk.cyan('Type'),
-        chalk.cyan('Created'),
-      ],
-      style: {
-        head: [],
-        border: [],
-      },
-    });
-
-    for (const service of services) {
-      const isFork = !!(service as any).parentId;
-      table.push([
-        service.id,
-        service.name,
-        service.status === 'running' ? chalk.green('●') + ' ' + service.status : service.status,
-        isFork ? chalk.yellow('Fork') : chalk.blue('Primary'),
-        new Date(service.createdAt).toLocaleString(),
-      ]);
-    }
-
-    console.log(table.toString());
     console.log();
-    console.log(chalk.gray('💡 Use .fork-delete <id> to delete a fork\n'));
+    renderResultTable(services.map(s => ({
+      id: s.id,
+      name: s.name,
+      status: s.status,
+      type: (s as any).parentId ? 'Fork' : 'Primary',
+      created: new Date(s.createdAt).toLocaleString(),
+    })));
+    console.log();
   } catch (error) {
-    console.error(chalk.red('\n❌ Error listing forks:'), error instanceof Error ? error.message : error);
-    console.log();
+    renderError(error instanceof Error ? error.message : String(error));
   }
 }
 
-/**
- * Delete a database fork
- */
 async function deleteFork(forkId: string): Promise<void> {
   try {
     const adapter = AdapterFactory.create(config.database);
     await adapter.connect();
     const forkManager = new DatabaseForkManager(adapter);
 
-    // Confirm deletion
-    const { confirm } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'confirm',
-        message: `Are you sure you want to delete fork ${forkId}? This cannot be undone.`,
-        default: false,
-      },
-    ]);
+    const { confirm } = await inquirer.prompt([{
+      type: 'confirm', name: 'confirm',
+      message: `Delete fork ${forkId}? This cannot be undone.`, default: false,
+    }]);
 
-    if (!confirm) {
-      console.log(chalk.yellow('\nDeletion cancelled.\n'));
-      return;
-    }
+    if (!confirm) { renderInfo('Cancelled'); return; }
 
-    const spinner = ora('Deleting database fork...').start();
-
+    const spinner = new NeuroSpinner('Deleting fork').start();
     await forkManager.deleteFork(forkId);
-
-    spinner.succeed('Database fork deleted successfully');
-    console.log();
+    spinner.succeed('Fork deleted');
   } catch (error) {
-    console.error(chalk.red('\n❌ Error deleting fork:'), error instanceof Error ? error.message : error);
-    console.log();
+    renderError(error instanceof Error ? error.message : String(error));
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────────────────────
+
+function pluralize(singular: string): string {
+  const irregulars: Record<string, string> = {
+    category: 'categories', person: 'people', child: 'children',
+    man: 'men', woman: 'women',
+  };
+  if (irregulars[singular.toLowerCase()]) return irregulars[singular.toLowerCase()];
+  if (singular.endsWith('y')) return singular.slice(0, -1) + 'ies';
+  if (/(?:s|ss|sh|ch|x|z)$/.test(singular)) return singular + 'es';
+  if (singular.endsWith('f')) return singular.slice(0, -1) + 'ves';
+  if (singular.endsWith('fe')) return singular.slice(0, -2) + 'ves';
+  return singular + 's';
+}
+
+function buildQueryWithData(
+  originalSQL: string,
+  tableName: string,
+  data: Record<string, string>
+): string {
+  const match = originalSQL.match(/INSERT\s+INTO\s+(\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)/i);
+  if (!match) return originalSQL;
+
+  const cols = match[2].split(',').map(c => c.trim());
+  const vals = match[3].split(',').map(v => v.trim());
+
+  for (const [col, val] of Object.entries(data)) {
+    cols.push(col);
+    vals.push(
+      isNaN(Number(val)) && val !== 'true' && val !== 'false'
+        ? `'${val.replace(/'/g, "''")}'` : val
+    );
+  }
+
+  return `INSERT INTO ${tableName} (${cols.join(', ')}) VALUES (${vals.join(', ')})`;
 }
