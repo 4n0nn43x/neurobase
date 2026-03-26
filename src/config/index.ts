@@ -52,7 +52,7 @@ export function loadConfig(): Config {
         llmProvider === 'openai'
           ? {
               apiKey: getEnvVar('OPENAI_API_KEY'),
-              model: getEnvVar('OPENAI_MODEL', 'gpt-4-turbo-preview'),
+              model: getEnvVar('OPENAI_MODEL', 'gpt-4o'),
               temperature: getEnvVarNumber('OPENAI_TEMPERATURE', 0.1),
               maxTokens: getEnvVarNumber('OPENAI_MAX_TOKENS', 2000),
             }
@@ -61,7 +61,7 @@ export function loadConfig(): Config {
         llmProvider === 'anthropic'
           ? {
               apiKey: getEnvVar('ANTHROPIC_API_KEY'),
-              model: getEnvVar('ANTHROPIC_MODEL', 'claude-3-5-sonnet-20241022'),
+              model: getEnvVar('ANTHROPIC_MODEL', 'claude-sonnet-4-5'),
               temperature: getEnvVarNumber('ANTHROPIC_TEMPERATURE', 0.1),
               maxTokens: getEnvVarNumber('ANTHROPIC_MAX_TOKENS', 2000),
             }
@@ -99,4 +99,24 @@ export function loadConfig(): Config {
   return config;
 }
 
-export const config = loadConfig();
+// Lazy proxy — loadConfig() runs on first access, not at module import.
+// Keeps `neurobase --version`, `--help`, `setup`, and `doctor` working without a .env file.
+let _config: Config | null = null;
+export const config = new Proxy({} as Config, {
+  get(_target, prop) {
+    if (!_config) _config = loadConfig();
+    return _config[prop as keyof Config];
+  },
+  has(_target, prop) {
+    if (!_config) _config = loadConfig();
+    return prop in _config;
+  },
+  ownKeys() {
+    if (!_config) _config = loadConfig();
+    return Reflect.ownKeys(_config);
+  },
+  getOwnPropertyDescriptor(_target, prop) {
+    if (!_config) _config = loadConfig();
+    return Reflect.getOwnPropertyDescriptor(_config, prop);
+  },
+});
