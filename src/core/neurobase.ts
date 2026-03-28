@@ -20,14 +20,7 @@ import { SemanticRenderer } from '../semantic/renderer';
 import { PrivacyGuard } from '../security/privacy-guard';
 import { logger } from '../utils/logger';
 import { join } from 'path';
-
-function uuidv4(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
+import { randomUUID } from 'crypto';
 
 export class NeuroBase {
   private config: Config;
@@ -259,7 +252,7 @@ export class NeuroBase {
         await this.memoryAgent.process({
           action: 'store',
           entry: {
-            id: uuidv4(),
+            id: randomUUID(),
             naturalLanguage: nlQuery.text,
             sql: finalSQL,
             userId: nlQuery.userId,
