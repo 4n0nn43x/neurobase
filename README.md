@@ -34,7 +34,8 @@ Most text-to-SQL tools generate a query and hope it works. NeuroBase takes a dif
 ### npx (zero install)
 
 ```bash
-npx neurobase setup       # interactive configuration wizard
+npx neurobase setup        # interactive configuration wizard
+npx neurobase doctor       # verify environment and connectivity
 npx neurobase interactive  # start querying
 ```
 
@@ -43,6 +44,7 @@ npx neurobase interactive  # start querying
 ```bash
 npm install -g neurobase
 neurobase setup
+neurobase doctor
 neurobase interactive
 ```
 
@@ -210,6 +212,10 @@ The CLI features a rich terminal interface with:
 ```
 
 **Commands:** `.help` `.schema` `.stats` `.clear` `.fork` `.forks` `.exit`
+
+**Diagnostics:** `neurobase doctor` runs a full health check (Node version,
+DB connection, LLM key, required Postgres extensions, filesystem). Use it
+first when something feels off.
 
 ### REST API
 

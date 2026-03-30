@@ -88,6 +88,15 @@ program
     await import('./api');
   });
 
+program
+  .command('doctor')
+  .description('Run environment and connectivity diagnostics')
+  .action(async () => {
+    const { runDoctor } = await import('./scripts/doctor');
+    const code = await runDoctor();
+    process.exit(code);
+  });
+
 program.parse();
 
 // Conversation context
