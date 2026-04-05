@@ -93,3 +93,6 @@ temp/
 
 # CLI history
 .neurobase/
+
+# Local Claude Code session data
+.claude/
