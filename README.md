@@ -445,6 +445,11 @@ npm run test:all          # all tests verbose
 
 ---
 
+## Contributing & Security
+
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — local setup, code standards, PR flow
+- [SECURITY.md](./SECURITY.md) — threat model, vulnerability disclosure
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
