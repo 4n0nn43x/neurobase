@@ -5,12 +5,14 @@
 import { BaseLLMProvider } from './base';
 import { OpenAIProvider } from './providers/openai';
 import { AnthropicProvider } from './providers/anthropic';
+import { OpenRouterProvider } from './providers/openrouter';
 import { OllamaProvider } from './providers/ollama';
 import { LLMConfig } from '../types';
 
 export * from './base';
 export * from './providers/openai';
 export * from './providers/anthropic';
+export * from './providers/openrouter';
 export * from './providers/ollama';
 
 export class LLMFactory {
@@ -27,6 +29,12 @@ export class LLMFactory {
           throw new Error('Anthropic configuration is missing');
         }
         return new AnthropicProvider(config.anthropic);
+
+      case 'openrouter':
+        if (!config.openrouter) {
+          throw new Error('OpenRouter configuration is missing');
+        }
+        return new OpenRouterProvider(config.openrouter);
 
       case 'ollama':
         if (!config.ollama) {

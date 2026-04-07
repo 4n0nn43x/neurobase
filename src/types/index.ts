@@ -12,10 +12,13 @@ export interface Config {
   security: SecurityConfig;
 }
 
+export type LLMProviderName = 'openai' | 'anthropic' | 'openrouter' | 'ollama';
+
 export interface LLMConfig {
-  provider: 'openai' | 'anthropic' | 'ollama';
+  provider: LLMProviderName;
   openai?: OpenAIConfig;
   anthropic?: AnthropicConfig;
+  openrouter?: OpenRouterConfig;
   ollama?: OllamaConfig;
 }
 
@@ -31,6 +34,15 @@ export interface AnthropicConfig {
   model: string;
   temperature: number;
   maxTokens: number;
+}
+
+export interface OpenRouterConfig {
+  apiKey: string;
+  model: string;
+  temperature: number;
+  maxTokens: number;
+  appName?: string;
+  appUrl?: string;
 }
 
 export interface OllamaConfig {
