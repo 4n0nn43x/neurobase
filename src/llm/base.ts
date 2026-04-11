@@ -30,6 +30,12 @@ export abstract class BaseLLMProvider {
 
   abstract generateEmbedding(text: string): Promise<number[]>;
 
+  /** Return the current model identifier. */
+  abstract getModel(): string;
+
+  /** Update the model used for subsequent calls in this session. */
+  abstract setModel(model: string): void;
+
   /**
    * Helper method to create a SQL generation prompt
    */

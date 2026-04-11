@@ -18,6 +18,14 @@ export class OpenAIProvider extends BaseLLMProvider {
     });
   }
 
+  getModel(): string {
+    return this.config.model;
+  }
+
+  setModel(model: string): void {
+    this.config.model = model;
+  }
+
   async generateCompletion(
     messages: LLMMessage[],
     options?: LLMOptions
