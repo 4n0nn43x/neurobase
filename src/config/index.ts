@@ -3,7 +3,9 @@
  */
 
 import dotenv from 'dotenv';
-import { Config } from '../types';
+import { Config, LLMProviderName } from '../types';
+import { loadProfile, getActiveDatabase } from './profile-store';
+import { getCredential } from './credential-store';
 
 dotenv.config();
 
@@ -27,23 +29,48 @@ function getEnvVarBoolean(key: string, defaultValue: boolean): boolean {
   return value.toLowerCase() === 'true';
 }
 
-export function loadConfig(): Config {
-  const llmProvider = getEnvVar('LLM_PROVIDER', 'openai') as 'openai' | 'anthropic' | 'ollama';
+function requireKey(envName: string): string {
+  throw new Error(
+    `Missing API key for ${envName}. Run \`neurobase setup\` or set ${envName} in your environment.`,
+  );
+}
 
-  const dbEngine = (getEnvVar('DB_ENGINE', 'postgresql') as 'postgresql' | 'mysql' | 'sqlite' | 'mongodb');
+/**
+ * Resolution order (highest priority first):
+ *   1. process.env  (CLI flags or shell exports)
+ *   2. ~/.neurobase/profiles/<active>.json + credentials.json
+ *   3. .env file (already loaded into process.env above by dotenv)
+ *
+ * The profile path takes precedence over .env so that a global wizard-driven
+ * setup beats a stale per-project .env. Users on the legacy .env flow keep
+ * working unchanged because process.env wins over the profile.
+ */
+export function loadConfig(profileName?: string): Config {
+  const profile = loadProfile(profileName);
+  const activeDb = getActiveDatabase(profile);
+
+  const llmProvider = (process.env.LLM_PROVIDER || profile?.llm?.provider || 'openai') as LLMProviderName;
+  const dbEngine = (process.env.DB_ENGINE || activeDb?.engine || 'postgresql') as 'postgresql' | 'mysql' | 'sqlite' | 'mongodb';
+
+  const dbUrl = process.env.DATABASE_URL || activeDb?.connectionString;
+  if (!dbUrl) {
+    throw new Error(
+      'No database configured. Run `neurobase setup db` to register one, or set DATABASE_URL.',
+    );
+  }
 
   const config: Config = {
     database: {
       engine: dbEngine,
-      connectionString: getEnvVar('DATABASE_URL'),
+      connectionString: dbUrl,
       ssl: {
-        enabled: getEnvVarBoolean('DB_SSL_ENABLED', true),
-        rejectUnauthorized: getEnvVarBoolean('DB_SSL_REJECT_UNAUTHORIZED', true),
+        enabled: getEnvVarBoolean('DB_SSL_ENABLED', activeDb?.ssl?.enabled ?? true),
+        rejectUnauthorized: getEnvVarBoolean('DB_SSL_REJECT_UNAUTHORIZED', activeDb?.ssl?.rejectUnauthorized ?? true),
       },
       pool: {
-        max: getEnvVarNumber('DB_POOL_MAX', 20),
-        idleTimeoutMillis: getEnvVarNumber('DB_POOL_IDLE_TIMEOUT', 30000),
-        connectionTimeoutMillis: getEnvVarNumber('DB_POOL_CONNECTION_TIMEOUT', 10000),
+        max: getEnvVarNumber('DB_POOL_MAX', activeDb?.pool?.max ?? 20),
+        idleTimeoutMillis: getEnvVarNumber('DB_POOL_IDLE_TIMEOUT', activeDb?.pool?.idleTimeoutMillis ?? 30000),
+        connectionTimeoutMillis: getEnvVarNumber('DB_POOL_CONNECTION_TIMEOUT', activeDb?.pool?.connectionTimeoutMillis ?? 10000),
       },
     },
     llm: {
@@ -51,27 +78,38 @@ export function loadConfig(): Config {
       openai:
         llmProvider === 'openai'
           ? {
-              apiKey: getEnvVar('OPENAI_API_KEY'),
-              model: getEnvVar('OPENAI_MODEL', 'gpt-4o'),
-              temperature: getEnvVarNumber('OPENAI_TEMPERATURE', 0.1),
-              maxTokens: getEnvVarNumber('OPENAI_MAX_TOKENS', 2000),
+              apiKey: process.env.OPENAI_API_KEY || getCredential('openai') || profile?.llm?.openai?.apiKey || requireKey('OPENAI_API_KEY'),
+              model: process.env.OPENAI_MODEL || profile?.llm?.openai?.model || 'gpt-4o',
+              temperature: getEnvVarNumber('OPENAI_TEMPERATURE', profile?.llm?.openai?.temperature ?? 0.1),
+              maxTokens: getEnvVarNumber('OPENAI_MAX_TOKENS', profile?.llm?.openai?.maxTokens ?? 2000),
             }
           : undefined,
       anthropic:
         llmProvider === 'anthropic'
           ? {
-              apiKey: getEnvVar('ANTHROPIC_API_KEY'),
-              model: getEnvVar('ANTHROPIC_MODEL', 'claude-sonnet-4-5'),
-              temperature: getEnvVarNumber('ANTHROPIC_TEMPERATURE', 0.1),
-              maxTokens: getEnvVarNumber('ANTHROPIC_MAX_TOKENS', 2000),
+              apiKey: process.env.ANTHROPIC_API_KEY || getCredential('anthropic') || profile?.llm?.anthropic?.apiKey || requireKey('ANTHROPIC_API_KEY'),
+              model: process.env.ANTHROPIC_MODEL || profile?.llm?.anthropic?.model || 'claude-sonnet-4-5',
+              temperature: getEnvVarNumber('ANTHROPIC_TEMPERATURE', profile?.llm?.anthropic?.temperature ?? 0.1),
+              maxTokens: getEnvVarNumber('ANTHROPIC_MAX_TOKENS', profile?.llm?.anthropic?.maxTokens ?? 2000),
+            }
+          : undefined,
+      openrouter:
+        llmProvider === 'openrouter'
+          ? {
+              apiKey: process.env.OPENROUTER_API_KEY || getCredential('openrouter') || profile?.llm?.openrouter?.apiKey || requireKey('OPENROUTER_API_KEY'),
+              model: process.env.OPENROUTER_MODEL || profile?.llm?.openrouter?.model || 'anthropic/claude-sonnet-4-5',
+              temperature: getEnvVarNumber('OPENROUTER_TEMPERATURE', profile?.llm?.openrouter?.temperature ?? 0.1),
+              maxTokens: getEnvVarNumber('OPENROUTER_MAX_TOKENS', profile?.llm?.openrouter?.maxTokens ?? 2000),
+              appName: process.env.OPENROUTER_APP_NAME || profile?.llm?.openrouter?.appName,
+              appUrl: process.env.OPENROUTER_APP_URL || profile?.llm?.openrouter?.appUrl,
             }
           : undefined,
       ollama:
         llmProvider === 'ollama'
           ? {
-              baseUrl: getEnvVar('OLLAMA_BASE_URL', 'http://localhost:11434'),
-              model: getEnvVar('OLLAMA_MODEL', 'llama3.2'),
-              temperature: getEnvVarNumber('OLLAMA_TEMPERATURE', 0.1),
+              baseUrl: process.env.OLLAMA_BASE_URL || profile?.llm?.ollama?.baseUrl || 'http://localhost:11434',
+              model: process.env.OLLAMA_MODEL || profile?.llm?.ollama?.model || 'llama3.2',
+              temperature: getEnvVarNumber('OLLAMA_TEMPERATURE', profile?.llm?.ollama?.temperature ?? 0.1),
             }
           : undefined,
     },
