@@ -11,7 +11,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { NeuroBase } from './core/neurobase';
 import { config } from './config';
-import { AdapterFactory } from './database/adapter-factory';
 import { DatabaseForkManager } from './database/fork';
 import {
   showBanner,
@@ -33,18 +32,15 @@ import {
   NeuroSpinner,
 } from './ui';
 import { runSetupWizard } from './ui/setup-wizard';
+import { loadProfile, getActiveProfileName } from './config/profile-store';
 
 const program = new Command();
 
 program
   .name('neurobase')
   .description('Intelligent, self-learning conversational database')
-  .version('3.0.0');
-
-program
-  .command('interactive')
-  .alias('i')
-  .description('Start interactive query session')
+  .version('3.0.0')
+  // Default action: no subcommand → drop into the interactive REPL.
   .action(async () => {
     await runInteractiveMode();
   });
@@ -52,30 +48,52 @@ program
 program
   .command('query <text>')
   .alias('q')
-  .description('Run a single query')
+  .description('Run a single query and exit')
   .option('--sql', 'Show generated SQL')
   .option('--explain', 'Show explanation')
   .action(async (text: string, options: { sql?: boolean; explain?: boolean }) => {
     await runSingleQuery(text, options);
   });
 
+const VALID_SETUP_SECTIONS = ['all', 'db', 'llm', 'model', 'token', 'features', 'privacy'] as const;
+type SetupSectionArg = typeof VALID_SETUP_SECTIONS[number];
+
 program
-  .command('setup')
-  .description('Interactive setup wizard — configure database and LLM')
+  .command('setup [section]')
+  .description('Configure provider, model, database — section: db | llm | model | token | features | privacy')
+  .option('--profile <name>', 'Profile name to create or update', 'default')
+  .option('--reconfigure', 'Overwrite an existing profile without confirmation')
+  .action(async (
+    section: string | undefined,
+    opts: { profile?: string; reconfigure?: boolean },
+  ) => {
+    const sel = (section ?? 'all') as SetupSectionArg;
+    if (!VALID_SETUP_SECTIONS.includes(sel)) {
+      console.error(`Unknown section "${section}". Valid: ${VALID_SETUP_SECTIONS.slice(1).join(', ')}`);
+      process.exit(2);
+    }
+    await runSetupWizard({ profileName: opts.profile, section: sel, reconfigure: opts.reconfigure });
+  });
+
+program
+  .command('doctor')
+  .description('Check environment, credentials, and database connectivity')
   .action(async () => {
-    await runSetupWizard();
+    const { runDoctor } = await import('./scripts/doctor');
+    const code = await runDoctor();
+    process.exit(code);
   });
 
 program
   .command('init')
-  .description('Initialize NeuroBase database tables')
+  .description('Create the NeuroBase tables in the configured database')
   .action(async () => {
     await initializeDatabase();
   });
 
 program
   .command('stats')
-  .description('Show database statistics')
+  .description('Print database statistics (tables, rows, etc.)')
   .action(async () => {
     await showStatsCommand();
   });
@@ -84,17 +102,7 @@ program
   .command('serve')
   .description('Start the REST API server')
   .action(async () => {
-    // Delegate to the API module
     await import('./api');
-  });
-
-program
-  .command('doctor')
-  .description('Run environment and connectivity diagnostics')
-  .action(async () => {
-    const { runDoctor } = await import('./scripts/doctor');
-    const code = await runDoctor();
-    process.exit(code);
   });
 
 program.parse();
@@ -162,13 +170,20 @@ class HistoryPrompt {
 async function runInteractiveMode(): Promise<void> {
   process.env.NEUROBASE_QUIET = 'true';
 
-  // Check if .env exists, offer setup if not
-  if (!fs.existsSync(path.join(process.cwd(), '.env'))) {
+  // Resolution order: active profile in ~/.neurobase → local .env → trigger login.
+  const activeProfile = loadProfile(getActiveProfileName());
+  const hasEnv = fs.existsSync(path.join(process.cwd(), '.env'));
+
+  if (!activeProfile && !hasEnv) {
     console.log();
-    renderInfo('No .env file found. Running setup wizard...');
+    renderInfo('No profile or .env detected. Running setup wizard...');
     console.log();
     await runSetupWizard();
-    return;
+    // After login, the profile is on disk — reload config and continue.
+    if (!loadProfile(getActiveProfileName())) {
+      // User cancelled. Bail out cleanly.
+      return;
+    }
   }
 
   showBanner('3.0.0');
@@ -210,51 +225,19 @@ async function runInteractiveMode(): Promise<void> {
       const trimmed = query.trim();
       if (!trimmed) continue;
 
-      switch (trimmed) {
-        case '.exit':
-          console.log();
-          renderSuccess('Goodbye!');
-          console.log();
-          await nb.close();
-          running = false;
+      // Slash / dot commands are unified — both prefixes dispatch to the
+      // same handler. `/cmd` is the canonical form; `.cmd` is kept as a
+      // silent alias for backwards compatibility.
+      const cmdMatch = trimmed.match(/^[./](\S+)(?:\s+(.*))?$/);
+      if (cmdMatch) {
+        const [, cmd, args] = cmdMatch;
+        const handled = await dispatchReplCommand(nb, cmd, args ?? '');
+        if (handled === 'exit') { running = false; continue; }
+        if (handled === 'handled') continue;
+        if (handled === 'unknown') {
+          renderError(`Unknown command: ${trimmed}`, 'Type /help to see available commands.');
           continue;
-
-        case '.help':
-          renderHelp();
-          continue;
-
-        case '.schema':
-          await showSchemaCommand(nb);
-          continue;
-
-        case '.stats':
-          await displayStatsCommand(nb);
-          continue;
-
-        case '.clear':
-          console.clear();
-          conversationHistory.length = 0;
-          try { if (fs.existsSync(HISTORY_FILE)) fs.unlinkSync(HISTORY_FILE); } catch { /* ignore */ }
-          showBanner('3.0.0');
-          renderInfo('Screen and history cleared');
-          console.log();
-          continue;
-
-        case '.fork':
-          await createFork();
-          continue;
-
-        case '.forks':
-          await listForks();
-          continue;
-
-        default:
-          if (trimmed.startsWith('.fork-delete ')) {
-            const forkId = trimmed.split(' ')[1];
-            if (forkId) await deleteFork(forkId);
-            else renderError('Usage: .fork-delete <fork-id>');
-            continue;
-          }
+        }
       }
 
       saveToHistory(trimmed);
@@ -703,14 +686,193 @@ async function showStatsCommand(): Promise<void> {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Fork Management
+// Model switching
 // ─────────────────────────────────────────────────────────────
 
-async function createFork(): Promise<void> {
+async function switchModelCommand(nb: NeuroBase): Promise<void> {
+  const { getModelChoices } = await import('./llm/model-catalog');
+  const { pickModel } = await import('./ui/model-picker');
+  const provider = nb.getLLMProvider() as 'openai' | 'anthropic' | 'openrouter' | 'ollama';
+  const currentModel = nb.getLLMModel();
+
+  renderInfo(`Current: ${colors.accent(provider)} / ${colors.highlight(currentModel)}`);
+
+  // Provider-specific context for live model fetching
+  const ctx: { apiKey?: string; baseUrl?: string } = {};
+  if (provider === 'openrouter') ctx.apiKey = config.llm.openrouter?.apiKey;
+  if (provider === 'ollama') ctx.baseUrl = config.llm.ollama?.baseUrl;
+
+  const choices = await getModelChoices(provider, ctx);
+  if (choices.length === 0) {
+    renderError('No models available for this provider');
+    return;
+  }
+
+  const selected = await pickModel({
+    message: `Pick a model (type to filter, ${choices.length} available)`,
+    models: choices,
+    currentValue: currentModel,
+  });
+
+  if (!selected) {
+    renderInfo('Model unchanged');
+    return;
+  }
+  if (selected === currentModel) {
+    renderInfo('Model unchanged');
+    return;
+  }
+  nb.setLLMModel(selected);
+  renderSuccess(`Model switched to ${selected}`);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Slash / dot command dispatch
+// ─────────────────────────────────────────────────────────────
+
+type CommandResult = 'handled' | 'unknown' | 'exit';
+
+async function dispatchReplCommand(nb: NeuroBase, cmd: string, args: string): Promise<CommandResult> {
+  switch (cmd) {
+    case 'exit':
+    case 'quit':
+      console.log();
+      renderSuccess('Goodbye!');
+      console.log();
+      await nb.close();
+      return 'exit';
+
+    case 'help':
+    case '?':
+      renderHelp();
+      return 'handled';
+
+    case 'schema':
+      await showSchemaCommand(nb);
+      return 'handled';
+
+    case 'stats':
+      await displayStatsCommand(nb);
+      return 'handled';
+
+    case 'clear':
+      console.clear();
+      conversationHistory.length = 0;
+      try { if (fs.existsSync(HISTORY_FILE)) fs.unlinkSync(HISTORY_FILE); } catch { /* ignore */ }
+      showBanner('3.0.0');
+      renderInfo('Screen and history cleared');
+      console.log();
+      return 'handled';
+
+    case 'model':
+      if (args) {
+        nb.setLLMModel(args.trim());
+        renderSuccess(`Model switched to ${args.trim()}`);
+      } else {
+        await switchModelCommand(nb);
+      }
+      return 'handled';
+
+    case 'db':
+    case 'database':
+      await dbCommand(nb, args.trim());
+      return 'handled';
+
+    case 'fork':
+      await createForkCommand(nb);
+      return 'handled';
+
+    case 'forks':
+      await listForksCommand(nb);
+      return 'handled';
+
+    case 'fork-delete':
+      if (args.trim()) await deleteForkCommand(nb, args.trim());
+      else renderError('Usage: /fork-delete <fork-id>');
+      return 'handled';
+
+    default:
+      return 'unknown';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// /db — switch between registered databases at runtime
+// ─────────────────────────────────────────────────────────────
+
+async function dbCommand(nb: NeuroBase, args: string): Promise<void> {
+  const { loadProfile, getActiveProfileName, listDatabases, setActiveDatabase, getActiveDatabase } =
+    await import('./config/profile-store');
+
+  const profileName = getActiveProfileName();
+  const profile = loadProfile(profileName);
+  if (!profile) {
+    renderError('No profile loaded — run `neurobase setup`.');
+    return;
+  }
+
+  const dbs = listDatabases(profile);
+  const active = profile.activeDatabase;
+
+  // No arg or `list` → show registry.
+  if (!args || args === 'list') {
+    if (dbs.length === 0) {
+      renderInfo('No databases registered. Run `neurobase setup db` to add one.');
+      return;
+    }
+    console.log();
+    for (const d of dbs) {
+      const marker = d.name === active ? colors.success('●') : colors.muted('○');
+      const masked = d.entry.connectionString.replace(/\/\/([^:]+):([^@]+)@/, '//$1:****@');
+      console.log(`  ${marker} ${colors.text(d.name)}  ${colors.dim(`(${d.entry.engine}, ${masked})`)}`);
+    }
+    console.log();
+    return;
+  }
+
+  // `switch <name>` or just `<name>` → swap active.
+  const target = args.replace(/^switch\s+/, '').trim();
+  const entry = profile.databases?.[target];
+  if (!entry) {
+    renderError(`No database named "${target}". Available: ${dbs.map((d) => d.name).join(', ') || '(none)'}`);
+    return;
+  }
+  if (target === active) {
+    renderInfo(`Already on "${target}".`);
+    return;
+  }
+
+  const spinner = new NeuroSpinner(`Switching to "${target}"`).start();
   try {
-    const adapter = AdapterFactory.create(config.database);
-    await adapter.connect();
-    const forkManager = new DatabaseForkManager(adapter);
+    await nb.switchDatabase({
+      engine: entry.engine,
+      connectionString: entry.connectionString,
+      ssl: { enabled: entry.ssl?.enabled ?? true, rejectUnauthorized: entry.ssl?.rejectUnauthorized ?? true },
+      pool: {
+        max: entry.pool?.max ?? 20,
+        idleTimeoutMillis: entry.pool?.idleTimeoutMillis ?? 30000,
+        connectionTimeoutMillis: entry.pool?.connectionTimeoutMillis ?? 10000,
+      },
+    });
+    setActiveDatabase(profileName, target);
+    spinner.succeed(`Switched to "${target}" (${entry.engine})`);
+  } catch (err) {
+    spinner.fail('Switch failed');
+    renderError(err instanceof Error ? err.message : String(err));
+  }
+
+  // Avoid the unused-import lint for getActiveDatabase — we re-import where needed.
+  void getActiveDatabase;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Fork Management — uses the NeuroBase's current adapter so that
+// forks always target the active database after a /db switch.
+// ─────────────────────────────────────────────────────────────
+
+async function createForkCommand(nb: NeuroBase): Promise<void> {
+  try {
+    const forkManager = new DatabaseForkManager(nb.getDatabase());
 
     console.log();
     renderInfo('Create Database Fork');
@@ -758,11 +920,9 @@ async function createFork(): Promise<void> {
   }
 }
 
-async function listForks(): Promise<void> {
+async function listForksCommand(nb: NeuroBase): Promise<void> {
   try {
-    const adapter = AdapterFactory.create(config.database);
-    await adapter.connect();
-    const forkManager = new DatabaseForkManager(adapter);
+    const forkManager = new DatabaseForkManager(nb.getDatabase());
     const spinner = new NeuroSpinner('Loading forks').start();
     const services = await forkManager.listForks();
     spinner.clear();
@@ -777,8 +937,8 @@ async function listForks(): Promise<void> {
       id: s.id,
       name: s.name,
       status: s.status,
-      type: (s as any).parentId ? 'Fork' : 'Primary',
-      created: new Date(s.createdAt).toLocaleString(),
+      type: (s as { parentId?: string }).parentId ? 'Fork' : 'Primary',
+      created: s.createdAt ? new Date(s.createdAt).toLocaleString() : '',
     })));
     console.log();
   } catch (error) {
@@ -786,11 +946,9 @@ async function listForks(): Promise<void> {
   }
 }
 
-async function deleteFork(forkId: string): Promise<void> {
+async function deleteForkCommand(nb: NeuroBase, forkId: string): Promise<void> {
   try {
-    const adapter = AdapterFactory.create(config.database);
-    await adapter.connect();
-    const forkManager = new DatabaseForkManager(adapter);
+    const forkManager = new DatabaseForkManager(nb.getDatabase());
 
     const { confirm } = await inquirer.prompt([{
       type: 'confirm', name: 'confirm',
