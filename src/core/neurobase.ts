@@ -460,4 +460,64 @@ export class NeuroBase {
     await this.schema.getSchema();
     logger.debug('Schema cache refreshed');
   }
+
+  /** Current LLM model identifier. */
+  getLLMModel(): string {
+    return this.llm.getModel();
+  }
+
+  /** Switch the LLM model for subsequent calls in this session. */
+  setLLMModel(model: string): void {
+    this.llm.setModel(model);
+    logger.debug({ model }, 'LLM model switched');
+  }
+
+  /** Active LLM provider name. */
+  getLLMProvider(): string {
+    return this.config.llm.provider;
+  }
+
+  /**
+   * Swap the active database at runtime. Disconnects the current adapter,
+   * creates a fresh one from the new config, and recreates every agent that
+   * holds a reference to the database. The LLM provider is preserved.
+   *
+   * Used by the REPL `/db switch <name>` command so users don't have to
+   * restart the session to switch between registered databases.
+   */
+  async switchDatabase(newDbConfig: Config['database']): Promise<void> {
+    logger.debug({ engine: newDbConfig.engine }, 'Switching database');
+
+    // Drop the existing pool / connection.
+    try { await this.db.disconnect(); } catch { /* best effort */ }
+
+    // Mutate config in place so getDatabase() / getStats() reflect the new state.
+    this.config = { ...this.config, database: newDbConfig };
+
+    // Rebuild the adapter + every agent that captured the old reference.
+    this.db = AdapterFactory.create(newDbConfig);
+    await this.db.connect();
+    const ok = await this.db.testConnection();
+    if (!ok) throw new Error('Failed to connect to the new database');
+
+    this.schema = new SchemaIntrospector(this.db);
+    this.linguisticAgent = new LinguisticAgent(this.llm, this.db);
+    this.optimizerAgent = new OptimizerAgent(this.db, this.llm);
+    this.memoryAgent = new MemoryAgent(this.db, this.llm);
+    this.candidateSelector = new CandidateSelector(this.llm, this.db);
+    this.diagnosticSearch = new DiagnosticTreeSearch(this.db);
+    this.semanticCatalog = new SemanticCatalogGenerator(
+      this.db, this.llm, this.config.security.privacyMode || 'schema-only',
+    );
+
+    if (this.config.features.enableLearning) {
+      await this.memoryAgent.initializeStorage();
+    }
+    // Re-introspect in the background — don't block the caller on it.
+    this.schema.getSchema().then((schema) =>
+      this.semanticCatalog.initialize(schema).catch(() => { /* best effort */ }),
+    ).catch(() => { /* best effort */ });
+
+    logger.debug({ engine: newDbConfig.engine }, 'Database switched');
+  }
 }
