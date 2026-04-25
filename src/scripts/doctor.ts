@@ -52,16 +52,27 @@ function checkNode(): CheckResult {
   };
 }
 
-function checkEnvFile(): CheckResult {
+function checkConfigSource(): CheckResult {
+  // Check for an active profile in ~/.neurobase first (preferred path).
+  try {
+    const { loadProfile, getActiveProfileName } = require('../config/profile-store');
+    const name = getActiveProfileName();
+    const profile = loadProfile(name);
+    if (profile) {
+      return { name: 'Config source', status: 'pass', detail: `profile "${name}"` };
+    }
+  } catch { /* fall through */ }
+
+  // Fall back to .env detection.
   const envPath = path.join(process.cwd(), '.env');
   if (fs.existsSync(envPath)) {
-    return { name: '.env file', status: 'pass', detail: envPath };
+    return { name: 'Config source', status: 'pass', detail: `.env (${envPath})` };
   }
   return {
-    name: '.env file',
+    name: 'Config source',
     status: 'warn',
-    detail: 'not found in current directory',
-    hint: 'Run `neurobase setup` or copy .env.example to .env',
+    detail: 'no profile and no .env',
+    hint: 'Run `neurobase setup` to configure interactively',
   };
 }
 
@@ -202,7 +213,7 @@ export async function runDoctor(): Promise<number> {
   const results: CheckResult[] = [];
 
   results.push(checkNode());
-  results.push(checkEnvFile());
+  results.push(checkConfigSource());
   results.push(checkWritableDir());
 
   let config: Config | null = null;
@@ -215,7 +226,7 @@ export async function runDoctor(): Promise<number> {
       name: 'Config load',
       status: 'fail',
       detail: err instanceof Error ? err.message : String(err),
-      hint: 'Run `neurobase setup` or copy .env.example to .env',
+      hint: 'Run `neurobase setup` to configure interactively',
     });
   }
 
