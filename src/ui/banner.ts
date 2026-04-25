@@ -97,10 +97,10 @@ export function showConnectionInfo(params: {
  */
 export function showQuickHelp(): void {
   const entries = [
-    [colors.accent('.help'), 'Show all commands'],
-    [colors.accent('.schema'), 'Display database schema'],
-    [colors.accent('.stats'), 'Show statistics'],
-    [colors.accent('.exit'), 'Quit NeuroBase'],
+    [colors.accent('/help'), 'Show all commands'],
+    [colors.accent('/db'), 'Switch database'],
+    [colors.accent('/model'), 'Switch LLM model'],
+    [colors.accent('/exit'), 'Quit NeuroBase'],
   ];
 
   const parts = entries.map(([cmd, desc]) => `${cmd} ${colors.dim(desc)}`);

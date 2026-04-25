@@ -273,14 +273,16 @@ export function renderHelp(): void {
   console.log();
 
   const commands = [
-    ['.help', 'Show this help screen'],
-    ['.schema', 'Display database schema with relationships'],
-    ['.stats', 'Show database statistics'],
-    ['.clear', 'Clear screen and history'],
-    ['.fork', 'Create a database fork (sandbox)'],
-    ['.forks', 'List active forks'],
-    ['.fork-delete <id>', 'Delete a fork'],
-    ['.exit', 'Quit NeuroBase'],
+    ['/help', 'Show this help screen'],
+    ['/schema', 'Display database schema with relationships'],
+    ['/stats', 'Show database statistics'],
+    ['/clear', 'Clear screen and history'],
+    ['/model [id]', 'Switch the LLM model (picker if no id)'],
+    ['/db [name]', 'List or switch the active database'],
+    ['/fork', 'Create a database fork (sandbox)'],
+    ['/forks', 'List active forks'],
+    ['/fork-delete <id>', 'Delete a fork'],
+    ['/exit', 'Quit NeuroBase'],
   ];
 
   for (const [cmd, desc] of commands) {
