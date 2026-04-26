@@ -9,8 +9,8 @@
 ## Option 1: npx (fastest)
 
 ```bash
-npx neurobase setup        # interactive configuration wizard
-npx neurobase interactive  # start querying
+npx neurobase setup     # interactive configuration wizard
+npx neurobase           # start querying (interactive REPL)
 ```
 
 No installation needed. Runs directly from npm.
@@ -20,7 +20,7 @@ No installation needed. Runs directly from npm.
 ```bash
 npm install -g neurobase
 neurobase setup
-neurobase interactive
+neurobase                # start querying
 ```
 
 ## Option 3: Docker
@@ -119,22 +119,33 @@ npm run serve:mcp
 
 1. Create account at [console.anthropic.com](https://console.anthropic.com/)
 2. Generate API key
-3. Set in `.env`:
+3. Run `neurobase setup llm` and paste the key — or set in `.env`:
    ```env
    LLM_PROVIDER=anthropic
    ANTHROPIC_API_KEY=sk-ant-...
-   ANTHROPIC_MODEL=claude-sonnet-4-20250514
+   ANTHROPIC_MODEL=claude-sonnet-4-5
    ```
 
 ### OpenAI
 
 1. Create account at [platform.openai.com](https://platform.openai.com/)
 2. Generate API key
-3. Set in `.env`:
+3. Run `neurobase setup llm` — or set in `.env`:
    ```env
    LLM_PROVIDER=openai
    OPENAI_API_KEY=sk-...
-   OPENAI_MODEL=gpt-4-turbo-preview
+   OPENAI_MODEL=gpt-4o
+   ```
+
+### OpenRouter (one key, many models)
+
+1. Create account at [openrouter.ai](https://openrouter.ai/)
+2. Generate API key
+3. Run `neurobase setup llm` — or set in `.env`:
+   ```env
+   LLM_PROVIDER=openrouter
+   OPENROUTER_API_KEY=sk-or-...
+   OPENROUTER_MODEL=anthropic/claude-sonnet-4-5
    ```
 
 ### Ollama (free, local)

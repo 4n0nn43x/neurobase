@@ -34,9 +34,9 @@ Most text-to-SQL tools generate a query and hope it works. NeuroBase takes a dif
 ### npx (zero install)
 
 ```bash
-npx neurobase setup        # interactive configuration wizard
-npx neurobase doctor       # verify environment and connectivity
-npx neurobase interactive  # start querying
+npx neurobase setup     # interactive configuration wizard
+npx neurobase doctor    # verify environment and connectivity
+npx neurobase           # start querying (interactive REPL)
 ```
 
 ### Install globally
@@ -45,7 +45,7 @@ npx neurobase interactive  # start querying
 npm install -g neurobase
 neurobase setup
 neurobase doctor
-neurobase interactive
+neurobase                # start querying
 ```
 
 ### Docker
@@ -177,7 +177,7 @@ npm run dev               # start in development mode
 ### Interactive CLI
 
 ```bash
-neurobase interactive
+neurobase
 ```
 
 The CLI features a rich terminal interface with:
@@ -211,7 +211,20 @@ The CLI features a rich terminal interface with:
   ⊞ 3 rows  │  ⏱ 45ms  │  ◉ learned
 ```
 
-**Commands:** `.help` `.schema` `.stats` `.clear` `.fork` `.forks` `.exit`
+**REPL commands** (slash-prefixed; `.` aliases are kept silently):
+
+| Command | What it does |
+|---|---|
+| `/help` | List all commands |
+| `/schema` | Display schema with relationships |
+| `/stats` | Database statistics |
+| `/clear` | Clear screen and conversation history |
+| `/model [id]` | Switch LLM model (searchable picker if no id) |
+| `/db [name]` | List databases, or switch active by name |
+| `/fork` | Create a sandbox fork of the active DB |
+| `/forks` | List active forks |
+| `/fork-delete <id>` | Delete a fork |
+| `/exit` | Quit |
 
 **Diagnostics:** `neurobase doctor` runs a full health check (Node version,
 DB connection, LLM key, required Postgres extensions, filesystem). Use it
@@ -297,17 +310,53 @@ await nb.close();
 
 ## Configuration
 
-Run `neurobase setup` for interactive configuration, or copy `.env.example` to `.env`:
+The recommended path is `neurobase setup`, which writes to `~/.neurobase/`
+(profile + credentials, no `.env` needed) and supports partial reconfiguration:
+
+```bash
+neurobase setup            # full wizard — DB step is optional
+neurobase setup db         # manage registered databases (add / switch / edit / remove)
+neurobase setup llm        # only the provider + token + model
+neurobase setup model      # only the model (searchable picker)
+neurobase setup token      # only the API key (re-validated live)
+neurobase setup features   # toggle learning / optimization / self-correction
+neurobase setup privacy    # change the privacy mode
+```
+
+### Multiple databases, one profile
+
+NeuroBase keeps a **registry of named databases** per profile so you can
+switch between them without reconfiguring everything. The first time you run
+`setup db` you give the database a name (`default`, `prod`, `mysql-staging`,
+whatever fits). After that:
+
+```bash
+neurobase setup db         # opens the menu — add / switch / edit / remove
+```
+
+Inside an interactive session, switch on the fly:
+
+```
+neurobase > /db                  # list everything, marks the active one
+neurobase > /db prod             # switch active database (re-introspects schema)
+neurobase > /db switch sandbox   # same — `switch` keyword is optional
+```
+
+The LLM, features, and privacy mode stay the same across switches — only the
+data source changes.
+
+`.env` is still supported as a fallback for users who prefer it — copy
+`.env.example` to `.env` and edit:
 
 ```env
 # Database (postgresql, mysql, sqlite, mongodb)
 DB_ENGINE=postgresql
 DATABASE_URL=postgresql://user:pass@localhost:5432/mydb
 
-# LLM (anthropic, openai, ollama)
+# LLM (anthropic, openai, openrouter, ollama)
 LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-sonnet-4-20250514
+ANTHROPIC_MODEL=claude-sonnet-4-5
 
 # Features
 ENABLE_LEARNING=true

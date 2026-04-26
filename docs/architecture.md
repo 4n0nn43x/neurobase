@@ -216,7 +216,7 @@ Tree-based root cause analysis for query performance. Traverses a knowledge tree
 
 | Entry | File | Command |
 |-------|------|---------|
-| Interactive CLI | `src/cli.ts` | `neurobase interactive` |
+| Interactive CLI | `src/cli.ts` | `neurobase` |
 | REST API | `src/api.ts` | `npm run serve` |
 | Multi-Agent API | `src/multi-agent-api.ts` | `npm run serve:multi-agent` |
 | MCP Server | `src/mcp/server.ts` | `npm run serve:mcp` |

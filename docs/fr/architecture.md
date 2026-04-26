@@ -214,7 +214,7 @@ Analyse de cause racine par arbre pour la performance des requetes. Parcours d'u
 
 | Entree | Fichier | Commande |
 |--------|---------|----------|
-| CLI interactif | `src/cli.ts` | `neurobase interactive` |
+| CLI interactif | `src/cli.ts` | `neurobase` |
 | API REST | `src/api.ts` | `npm run serve` |
 | API Multi-Agent | `src/multi-agent-api.ts` | `npm run serve:multi-agent` |
 | Serveur MCP | `src/mcp/server.ts` | `npm run serve:mcp` |

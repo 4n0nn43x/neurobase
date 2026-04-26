@@ -2,32 +2,40 @@
 
 NeuroBase operationnel en moins de 5 minutes.
 
-## 1. Installer et configurer
+## 1. Configurer
 
 ```bash
 npx neurobase setup
 ```
 
 L'assistant demande :
-- Moteur de base de donnees et URL de connexion
-- Fournisseur LLM et cle API
+- Fournisseur LLM (Anthropic / OpenAI / OpenRouter / Ollama) et cle API — validee en direct
+- Moteur de base de donnees et URL de connexion — testee en direct
 - Fonctionnalites a activer
 - Mode de confidentialite
 
-Cela cree un fichier `.env` dans le repertoire courant.
+Le resultat est sauvegarde dans `~/.neurobase/` (profil + identifiants, pas
+de `.env` necessaire). Tu peux relancer une section seule plus tard :
+`setup db`, `setup token`, `setup model`, etc.
 
-## 2. Initialiser la base
+## 2. Verifier que tout est branche
+
+```bash
+npx neurobase doctor
+```
+
+## 3. Donnees d'exemple (optionnel)
 
 ```bash
 npx neurobase init
 ```
 
-Tapez `y` pour charger les donnees e-commerce d'exemple.
+Tapez `y` pour charger le schema e-commerce d'exemple.
 
-## 3. Commencer a interroger
+## 4. Commencer a interroger
 
 ```bash
-npx neurobase interactive
+npx neurobase
 ```
 
 ## Exemples de requetes
@@ -88,18 +96,22 @@ neurobase > top 10 products by revenue
 neurobase > orders from last week
 ```
 
-## Commandes CLI
+## Commandes REPL
 
 | Commande | Action |
 |----------|--------|
-| `.help` | Afficher toutes les commandes |
-| `.schema` | Afficher le schema avec les relations |
-| `.stats` | Afficher les statistiques |
-| `.clear` | Effacer l'ecran et l'historique |
-| `.fork` | Creer un fork de la base (bac a sable) |
-| `.forks` | Lister les forks actifs |
-| `.fork-delete <id>` | Supprimer un fork |
-| `.exit` | Quitter |
+| `/help` | Afficher toutes les commandes |
+| `/schema` | Afficher le schema avec les relations |
+| `/stats` | Afficher les statistiques |
+| `/clear` | Effacer l'ecran et l'historique |
+| `/model [id]` | Changer le modele LLM (picker recherchable sans id) |
+| `/db [nom]` | Lister ou changer la base active |
+| `/fork` | Creer un fork de la base (bac a sable) |
+| `/forks` | Lister les forks actifs |
+| `/fork-delete <id>` | Supprimer un fork |
+| `/exit` | Quitter |
+
+Le prefixe `.` reste accepte silencieusement pour la retrocompatibilite.
 
 ## Mode API
 
