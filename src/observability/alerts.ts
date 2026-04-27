@@ -194,10 +194,11 @@ export class AlertSystem {
         }
         break;
 
-      case 'log':
+      case 'log': {
         const logMethod = alert.severity === 'critical' ? 'error' : alert.severity === 'warning' ? 'warn' : 'info';
         (logger as any)[logMethod]({ alertId: alert.id, severity: alert.severity }, `ALERT: ${alert.message}`);
         break;
+      }
     }
   }
 

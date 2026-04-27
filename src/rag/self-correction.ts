@@ -29,8 +29,8 @@ export class SelfCorrectionLoop {
     return withSpan('linguistic.translate', async (span) => {
       span.setAttribute('correction.type', 'self-correction');
       const attempts: CorrectionAttempt[] = [];
-      let lastError = dbError;
-      let lastSQL = failedSQL;
+      const lastError = dbError;
+      const lastSQL = failedSQL;
 
       for (let i = 0; i < this.maxAttempts; i++) {
         const temperature = this.temperatures[i];

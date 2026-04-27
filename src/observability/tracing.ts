@@ -25,10 +25,15 @@ export async function initTracing(config: TracingConfig): Promise<void> {
   if (!config.enabled || initialized) return;
 
   try {
+    // OpenTelemetry packages are optional peer-deps loaded lazily so that
+    // tracing-disabled installs don't pull them in. Static import would
+    // require them at typecheck time even when they're not installed.
+    /* eslint-disable @typescript-eslint/no-var-requires */
     otelApi = require('@opentelemetry/api');
     otelSdk = require('@opentelemetry/sdk-node');
     const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
     const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
+    /* eslint-enable @typescript-eslint/no-var-requires */
 
     const exporter = new OTLPTraceExporter({
       url: config.exporterEndpoint || 'http://localhost:4318/v1/traces',

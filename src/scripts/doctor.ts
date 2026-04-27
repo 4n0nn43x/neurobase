@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';
 import { AdapterFactory } from '../database/adapter-factory';
+import { loadProfile, getActiveProfileName } from '../config/profile-store';
 import type { Config } from '../types';
 
 type CheckStatus = 'pass' | 'warn' | 'fail';
@@ -55,7 +56,6 @@ function checkNode(): CheckResult {
 function checkConfigSource(): CheckResult {
   // Check for an active profile in ~/.neurobase first (preferred path).
   try {
-    const { loadProfile, getActiveProfileName } = require('../config/profile-store');
     const name = getActiveProfileName();
     const profile = loadProfile(name);
     if (profile) {

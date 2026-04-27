@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import inquirer from 'inquirer';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as readline from 'readline';
 import { NeuroBase } from './core/neurobase';
 import { config } from './config';
 import { DatabaseForkManager } from './database/fork';
@@ -148,7 +149,7 @@ class HistoryPrompt {
 
   async prompt(): Promise<string> {
     return new Promise((resolve, reject) => {
-      const rl = require('readline').createInterface({
+      const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout,
         historySize: 100,
@@ -510,7 +511,7 @@ async function collectPlaceholders(
   placeholders: string[],
   _sql: string
 ): Promise<Record<string, string>> {
-  const names = Array.from(new Set(placeholders.map(p => p.replace(/[\[\]]/g, ''))));
+  const names = Array.from(new Set(placeholders.map(p => p.replace(/[[\]]/g, ''))));
   const values: Record<string, string> = {};
   const db = (nb as any).db;
 

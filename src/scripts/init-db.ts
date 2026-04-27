@@ -5,9 +5,11 @@
  * Initializes NeuroBase tables and optionally loads sample data
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
+import * as readline from 'readline';
 import { NeuroBase } from '../core/neurobase';
 import { config } from '../config';
-import * as readline from 'readline';
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -44,9 +46,6 @@ async function main() {
       const db = nb.getDatabase();
 
       // Read and execute init.sql
-      const fs = require('fs');
-      const path = require('path');
-
       const initSQL = fs.readFileSync(
         path.join(__dirname, '../../sql/init.sql'),
         'utf8'

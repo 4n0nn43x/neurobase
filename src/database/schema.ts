@@ -185,7 +185,7 @@ export class SchemaIntrospector {
         const isPK = table.primaryKeys.includes(column.name);
         const isFK = table.foreignKeys.some(fk => fk.column === column.name);
 
-        let constraints = [];
+        const constraints = [];
         if (isPK) constraints.push('PK');
         if (isFK) constraints.push('FK');
         if (!column.nullable) constraints.push('NOT NULL');

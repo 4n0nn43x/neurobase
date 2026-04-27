@@ -4,6 +4,8 @@
  */
 
 import { Express, Request, Response } from 'express';
+import * as fs from 'fs';
+import * as path from 'path';
 import { MultiAgentOrchestrator } from '../orchestrator/multi-agent-orchestrator';
 import { ForkSynchronizer } from '../orchestrator/fork-synchronizer';
 import { logger } from '../utils/logger';
@@ -350,8 +352,6 @@ export class MonitoringDashboard {
    */
   private getDashboardHTML(): string {
     // Use the professional dashboard
-    const fs = require('fs');
-    const path = require('path');
     const dashboardPath = path.join(__dirname, '../../src/dashboard/professional-dashboard.html');
 
     // Try to read the professional dashboard, fallback to inline HTML if not found
