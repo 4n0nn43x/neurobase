@@ -30,7 +30,7 @@ import {
 import { setCredential } from '../config/credential-store';
 import { OpenRouterProvider } from '../llm/providers/openrouter';
 import { pickModel } from './model-picker';
-import { normalizeDbUrl, validateDbUrlShape, formatDbError } from '../utils/db-url';
+import { normalizeDbUrl, validateDbUrlShape, formatDbError, shouldRelaxTls } from '../utils/db-url';
 import type { LLMProviderName } from '../types';
 
 const neuroGradient = gradient(['#7C3AED', '#06B6D4', '#10B981']);
@@ -139,10 +139,14 @@ async function verifyOllamaReachable(baseUrl: string): Promise<{ ok: boolean; de
 
 async function testDatabase(engine: PartialDatabaseConfig['engine'], url: string): Promise<{ ok: boolean; detail: string }> {
   if (!engine) return { ok: false, detail: 'engine required' };
+  // Auto-relax TLS verification for known managed providers that ship
+  // self-signed certs (Supabase pooler in particular). User can still
+  // override via env vars when loading the saved profile.
+  const relax = shouldRelaxTls(url);
   const adapter = AdapterFactory.create({
     engine,
     connectionString: url,
-    ssl: { enabled: true, rejectUnauthorized: true },
+    ssl: { enabled: true, rejectUnauthorized: !relax },
     pool: { max: 1, idleTimeoutMillis: 1000, connectionTimeoutMillis: 5000 },
   });
   try {
@@ -189,7 +193,7 @@ export async function runSetupWizard(
   const existing = loadProfile(profileName);
 
   console.log();
-  console.log(neuroGradient(`  NeuroBase Login${section === 'all' ? '' : ' · ' + section}`));
+  console.log(neuroGradient(`  NeuroBase Setup${section === 'all' ? '' : ' · ' + section}`));
   console.log();
   clack.intro(colors.dim(section === 'all'
     ? 'Configure provider, model, and database — saved to ~/.neurobase'
@@ -419,11 +423,15 @@ async function collectNamedDatabase(
   const db = await collectDatabase();
   if ('cancelled' in db) return cancelled();
 
+  // Persist the TLS relaxation flag with the entry so future runs of
+  // loadConfig() don't re-trip on the self-signed cert.
+  const relax = shouldRelaxTls(db.url);
   return {
     name,
     entry: {
       engine: db.engine,
       connectionString: db.url,
+      ssl: { enabled: true, rejectUnauthorized: !relax },
     },
   };
 }

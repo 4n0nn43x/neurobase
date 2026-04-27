@@ -186,6 +186,22 @@ export function formatDbError(engine: DbEngine, err: unknown): string {
     return `connection reset — often a TLS misconfig (try adding ?sslmode=require for postgres)`;
   }
 
+  // Self-signed certificate (Supabase pooler, some managed DBs, internal CAs).
+  // Most node drivers surface this as code SELF_SIGNED_CERT_IN_CHAIN.
+  if (
+    e.code === 'SELF_SIGNED_CERT_IN_CHAIN' ||
+    e.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' ||
+    e.code === 'DEPTH_ZERO_SELF_SIGNED_CERT' ||
+    /self-signed certificate|unable to verify the first certificate/i.test(msg)
+  ) {
+    return (
+      'TLS verification failed — the server uses a self-signed or non-public certificate. ' +
+      'This is normal for Supabase pooler, some internal databases, and self-hosted setups. ' +
+      'Re-run with `DB_SSL_REJECT_UNAUTHORIZED=false`, or add `?sslmode=no-verify` to the URL ' +
+      '(NeuroBase relaxes verification automatically for known managed providers).'
+    );
+  }
+
   // Auth — engine-specific phrasing.
   if (engine === 'postgresql') {
     if (/password authentication failed/i.test(msg)) {
@@ -241,6 +257,27 @@ export function formatDbError(engine: DbEngine, err: unknown): string {
 function extractHost(msg: string): string | null {
   const m = msg.match(/(?:getaddrinfo|querySrv|hostname)[^a-z0-9_.-]+([a-z0-9][a-z0-9.-]+\.[a-z]{2,})/i);
   return m ? m[1] : null;
+}
+
+/**
+ * Some managed providers ship self-signed or non-public-CA certificates
+ * (Supabase pooler being the most common). Driver TLS verification has to
+ * be relaxed for these. Returns true when the URL host looks like one we
+ * know needs `rejectUnauthorized: false`.
+ *
+ * This is deliberately conservative: only matches host suffixes we have
+ * observed to require relaxation. Falls back to the user's explicit
+ * setting otherwise.
+ */
+export function shouldRelaxTls(url: string): boolean {
+  const hostMatch = url.match(/^[a-z+]+:\/\/(?:[^@/?#]+@)?([^:/?#\s]+)/i);
+  if (!hostMatch) return false;
+  const host = hostMatch[1].toLowerCase();
+  return (
+    /\.pooler\.supabase\.com$/.test(host) ||
+    /\.supabase\.co$/.test(host) ||
+    /\.supabase\.net$/.test(host)
+  );
 }
 
 function dnsHint(engine: DbEngine, host: string): string {
