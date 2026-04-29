@@ -130,7 +130,8 @@ export function loadConfig(profileName?: string): Config {
       apiRateLimit: getEnvVarNumber('API_RATE_LIMIT', 100),
       readonlyMode: getEnvVarBoolean('READONLY_MODE', false),
       maxQueryTime: getEnvVarNumber('MAX_QUERY_TIME', 30000),
-      privacyMode: (getEnvVar('PRIVACY_MODE', 'schema-only') as 'strict' | 'schema-only' | 'permissive'),
+      privacyMode: (getEnvVar('PRIVACY_MODE', profile?.security?.privacyMode ?? 'schema-only') as 'strict' | 'schema-only' | 'permissive'),
+      permissionLevel: (process.env.PERMISSION_LEVEL ?? profile?.security?.permissionLevel ?? 'write') as 'read-only' | 'write' | 'ddl' | 'admin',
     },
   };
 

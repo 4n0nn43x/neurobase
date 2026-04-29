@@ -9,6 +9,36 @@ import { logger } from '../utils/logger';
 export type RiskLevel = 'read' | 'write' | 'modify' | 'destructive';
 export type ApprovalStatus = 'auto-approved' | 'sandbox-required' | 'human-approval-required' | 'blocked';
 
+/**
+ * Permission ladder for database operations, applied BEFORE the SQL runs.
+ *
+ *   read-only  → SELECT, WITH, EXPLAIN only
+ *   write      → + INSERT, UPDATE/DELETE *with* WHERE
+ *   ddl        → + DELETE/UPDATE without WHERE, CREATE/ALTER/DROP/TRUNCATE
+ *   admin      → unrestricted (still subject to SQL injection / GRANT blocks)
+ *
+ * Inspired by claw-code's PermissionMode (read-only / workspace-write / prompt
+ * / danger-full-access). The "prompt" mode there maps to the existing
+ * approval-request flow on this class.
+ */
+export type PermissionLevel = 'read-only' | 'write' | 'ddl' | 'admin';
+
+const ALLOWED_RISKS_BY_LEVEL: Record<PermissionLevel, Set<RiskLevel>> = {
+  'read-only': new Set<RiskLevel>(['read']),
+  'write':     new Set<RiskLevel>(['read', 'write', 'modify']),
+  'ddl':       new Set<RiskLevel>(['read', 'write', 'modify', 'destructive']),
+  'admin':     new Set<RiskLevel>(['read', 'write', 'modify', 'destructive']),
+};
+
+export interface EnforcementResult {
+  allowed: boolean;
+  level: PermissionLevel;
+  riskLevel: RiskLevel;
+  reason?: string;
+  /** True when the operation needs human approval before running. */
+  requiresApproval: boolean;
+}
+
 export interface OperationClassification {
   sql: string;
   riskLevel: RiskLevel;
@@ -142,6 +172,53 @@ export class OperationSupervisor {
       riskLevel: 'modify',
       approvalStatus: 'sandbox-required',
       reason: 'Unknown operation type - sandbox test required',
+    };
+  }
+
+  /**
+   * Gate an SQL statement against a configured permission level.
+   *
+   * Combines the existing classify() output (which uses the security
+   * analyzer) with the user's chosen ceiling. Returns a structured
+   * EnforcementResult so callers can render a clear reason — the same
+   * shape claw-code uses for permission denial events.
+   */
+  enforce(sql: string, level: PermissionLevel, estimatedRows?: number): EnforcementResult {
+    const classification = this.classify(sql, estimatedRows);
+
+    if (classification.approvalStatus === 'blocked') {
+      return {
+        allowed: false,
+        level,
+        riskLevel: classification.riskLevel,
+        reason: `Security analyzer blocked the statement: ${classification.reason}`,
+        requiresApproval: false,
+      };
+    }
+
+    const allowedRisks = ALLOWED_RISKS_BY_LEVEL[level];
+    if (!allowedRisks.has(classification.riskLevel)) {
+      return {
+        allowed: false,
+        level,
+        riskLevel: classification.riskLevel,
+        reason: `Permission "${level}" does not allow "${classification.riskLevel}" operations (${classification.reason})`,
+        requiresApproval: false,
+      };
+    }
+
+    // Even when the level permits the risk class, destructive ops still go
+    // through approval/sandbox like before.
+    const needsApproval =
+      classification.approvalStatus === 'human-approval-required' ||
+      classification.approvalStatus === 'sandbox-required';
+
+    return {
+      allowed: true,
+      level,
+      riskLevel: classification.riskLevel,
+      reason: classification.reason,
+      requiresApproval: needsApproval,
     };
   }
 

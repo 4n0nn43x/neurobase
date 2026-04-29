@@ -75,6 +75,7 @@ export interface Profile {
   security?: {
     privacyMode?: 'strict' | 'schema-only' | 'permissive';
     readonlyMode?: boolean;
+    permissionLevel?: 'read-only' | 'write' | 'ddl' | 'admin';
   };
 }
 
@@ -154,12 +155,23 @@ function persistProfile(name: string, profile: Profile): Profile {
   return profile;
 }
 
+/**
+ * Resolve the directory that holds NeuroBase profiles + credentials.
+ *
+ * Honours the `NEUROBASE_HOME` env var when set — primarily used by tests so
+ * they don't write under the developer's real home directory. Falls back to
+ * `~/.neurobase` for normal use.
+ */
+function getNeurobaseHome(): string {
+  return process.env.NEUROBASE_HOME || path.join(os.homedir(), '.neurobase');
+}
+
 export function getProfilesDir(): string {
-  return path.join(os.homedir(), '.neurobase', 'profiles');
+  return path.join(getNeurobaseHome(), 'profiles');
 }
 
 function getActiveFile(): string {
-  return path.join(os.homedir(), '.neurobase', '.active');
+  return path.join(getNeurobaseHome(), '.active');
 }
 
 export function getActiveProfileName(): string {

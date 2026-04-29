@@ -18,6 +18,7 @@ import { SemanticCatalogGenerator } from '../semantic/auto-catalog';
 import { SemanticLoader } from '../semantic/loader';
 import { SemanticRenderer } from '../semantic/renderer';
 import { PrivacyGuard } from '../security/privacy-guard';
+import { OperationSupervisor, type PermissionLevel } from '../orchestrator/supervisor';
 import { logger } from '../utils/logger';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
@@ -40,6 +41,7 @@ export class NeuroBase {
   private privacyGuard: PrivacyGuard;
   private semanticCatalog: SemanticCatalogGenerator;
   private semanticModel: SemanticModel | null = null;
+  private supervisor: OperationSupervisor;
 
   constructor(config: Config) {
     this.config = config;
@@ -69,6 +71,7 @@ export class NeuroBase {
     this.semanticCatalog = new SemanticCatalogGenerator(
       this.db, this.llm, config.security.privacyMode || 'schema-only'
     );
+    this.supervisor = new OperationSupervisor();
 
     // Load semantic model if available
     try {
@@ -214,6 +217,24 @@ export class NeuroBase {
       let result: { rows: any[]; rowCount: number | null };
       let corrected = false;
       let correctionAttempts: any[] | undefined;
+
+      // Permission enforcement — gate the SQL against the configured ladder
+      // BEFORE we hand it to the driver. read-only / write / ddl / admin.
+      const permissionLevel: PermissionLevel =
+        (this.config.security.permissionLevel as PermissionLevel) ??
+        (this.config.security.readonlyMode ? 'read-only' : 'write');
+      const enforcement = this.supervisor.enforce(finalSQL, permissionLevel);
+      if (!enforcement.allowed) {
+        logger.warn({
+          level: enforcement.level,
+          risk: enforcement.riskLevel,
+          reason: enforcement.reason,
+          sql: finalSQL.substring(0, 120),
+        }, 'Operation denied by permission ladder');
+        throw new Error(
+          `Operation denied (permission: ${enforcement.level}). ${enforcement.reason}`,
+        );
+      }
 
       try {
         result = await this.db.query(finalSQL, undefined, {

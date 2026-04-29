@@ -71,6 +71,17 @@ export interface SecurityConfig {
   readonlyMode: boolean;
   maxQueryTime: number;
   privacyMode?: 'strict' | 'schema-only' | 'permissive';
+  /**
+   * Permission ladder applied to every generated SQL before execution.
+   * `read-only` → SELECT only
+   * `write`     → + INSERT, scoped UPDATE/DELETE
+   * `ddl`       → + DDL and unscoped destructive ops
+   * `admin`     → no restriction beyond SQL injection / privilege blocks
+   *
+   * Default: `write` — matches the historical readonlyMode=false behaviour
+   * while still gating DDL and unscoped destructive operations.
+   */
+  permissionLevel?: 'read-only' | 'write' | 'ddl' | 'admin';
 }
 
 // Query Types
