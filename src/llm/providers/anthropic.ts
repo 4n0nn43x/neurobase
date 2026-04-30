@@ -26,6 +26,10 @@ export class AnthropicProvider extends BaseLLMProvider {
     this.config.model = model;
   }
 
+  getProviderName(): 'anthropic' {
+    return 'anthropic';
+  }
+
   async generateCompletion(
     messages: LLMMessage[],
     options?: LLMOptions
@@ -51,7 +55,7 @@ export class AnthropicProvider extends BaseLLMProvider {
       throw new Error('No text response from Anthropic');
     }
 
-    return {
+    const out = {
       content: textContent.text,
       usage: {
         promptTokens: response.usage.input_tokens,
@@ -59,6 +63,8 @@ export class AnthropicProvider extends BaseLLMProvider {
         totalTokens: response.usage.input_tokens + response.usage.output_tokens,
       },
     };
+    this.recordUsage(out);
+    return out;
   }
 
   async generateEmbedding(_text: string): Promise<number[]> {

@@ -52,7 +52,7 @@ export class OpenRouterProvider extends BaseLLMProvider {
       throw new Error('No response from OpenRouter');
     }
 
-    return {
+    const out = {
       content: choice.message.content,
       usage: response.usage
         ? {
@@ -62,6 +62,12 @@ export class OpenRouterProvider extends BaseLLMProvider {
           }
         : undefined,
     };
+    this.recordUsage(out);
+    return out;
+  }
+
+  getProviderName(): 'openrouter' {
+    return 'openrouter';
   }
 
   async generateEmbedding(_text: string): Promise<number[]> {

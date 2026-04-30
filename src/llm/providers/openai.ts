@@ -26,6 +26,10 @@ export class OpenAIProvider extends BaseLLMProvider {
     this.config.model = model;
   }
 
+  getProviderName(): 'openai' {
+    return 'openai';
+  }
+
   async generateCompletion(
     messages: LLMMessage[],
     options?: LLMOptions
@@ -46,7 +50,7 @@ export class OpenAIProvider extends BaseLLMProvider {
       throw new Error('No response from OpenAI');
     }
 
-    return {
+    const out: LLMResponse = {
       content: choice.message.content,
       usage: response.usage
         ? {
@@ -56,6 +60,8 @@ export class OpenAIProvider extends BaseLLMProvider {
           }
         : undefined,
     };
+    this.recordUsage(out);
+    return out;
   }
 
   async generateEmbedding(text: string): Promise<number[]> {

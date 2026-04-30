@@ -26,6 +26,10 @@ export class OllamaProvider extends BaseLLMProvider {
     this.config.model = model;
   }
 
+  getProviderName(): 'ollama' {
+    return 'ollama';
+  }
+
   async generateCompletion(
     messages: LLMMessage[],
     options?: LLMOptions
@@ -47,7 +51,7 @@ export class OllamaProvider extends BaseLLMProvider {
       throw new Error('No response from Ollama');
     }
 
-    return {
+    const out = {
       content: response.message.content,
       usage: {
         promptTokens: response.prompt_eval_count || 0,
@@ -55,6 +59,8 @@ export class OllamaProvider extends BaseLLMProvider {
         totalTokens: (response.prompt_eval_count || 0) + (response.eval_count || 0),
       },
     };
+    this.recordUsage(out);
+    return out;
   }
 
   async generateEmbedding(text: string): Promise<number[]> {

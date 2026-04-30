@@ -37,6 +37,35 @@ export abstract class BaseLLMProvider {
   abstract setModel(model: string): void;
 
   /**
+   * Provider tag used by the cost tracker. Subclasses override this; the
+   * default returns 'unknown' so older custom providers don't break.
+   */
+  getProviderName(): 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'unknown' {
+    return 'unknown';
+  }
+
+  /**
+   * Helper for concrete providers: record a completion's usage on the
+   * singleton cost tracker. Called from each generateCompletion()
+   * implementation after the LLM call returns.
+   */
+  protected recordUsage(response: LLMResponse): void {
+    if (!response.usage) return;
+    const provider = this.getProviderName();
+    if (provider === 'unknown') return;
+    // Lazy import to avoid a circular dep at module-load time.
+    /* eslint-disable @typescript-eslint/no-var-requires */
+    const { getCostTracker } = require('../observability/cost-tracker');
+    /* eslint-enable @typescript-eslint/no-var-requires */
+    getCostTracker().record({
+      provider,
+      model: this.getModel(),
+      promptTokens: response.usage.promptTokens,
+      completionTokens: response.usage.completionTokens,
+    });
+  }
+
+  /**
    * Helper method to create a SQL generation prompt
    */
   protected createSQLPrompt(
