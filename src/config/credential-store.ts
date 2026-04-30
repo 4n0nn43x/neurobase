@@ -25,8 +25,12 @@ import * as path from 'path';
 
 export type CredentialProvider = 'anthropic' | 'openai' | 'openrouter';
 
+function getNeurobaseHome(): string {
+  return process.env.NEUROBASE_HOME || path.join(os.homedir(), '.neurobase');
+}
+
 function getStoreFile(): string {
-  return path.join(os.homedir(), '.neurobase', 'credentials.json');
+  return path.join(getNeurobaseHome(), 'credentials.json');
 }
 
 function readStore(): Record<string, string> {
