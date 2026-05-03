@@ -2,6 +2,12 @@
  * A/B Testing Agent
  * Tests different strategies in parallel using database adapter
  * Compares approaches and recommends best performing strategy
+ *
+ * STATUS: experimental. The class is exported on the public API
+ * (`import { ABTestingAgent } from 'neurobase'`) for users who want to
+ * orchestrate parallel strategy comparisons themselves, but it is NOT
+ * wired into the default query pipeline. Wiring is tracked in the
+ * "multi-agent execution" roadmap item.
  */
 
 import { Pool } from 'pg';

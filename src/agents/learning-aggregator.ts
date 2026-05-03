@@ -2,6 +2,12 @@
  * Learning Aggregator Agent
  * Collects and synthesizes learning from all agents
  * Identifies cross-agent patterns and synchronizes knowledge
+ *
+ * STATUS: experimental. The class is exported on the public API
+ * (`import { LearningAggregatorAgent } from 'neurobase'`) for users who
+ * want to plug their own cross-agent synthesis layer, but it is NOT
+ * wired into the default query pipeline. Wiring is tracked in the
+ * "multi-agent execution" roadmap item.
  */
 
 import { Pool } from 'pg';
