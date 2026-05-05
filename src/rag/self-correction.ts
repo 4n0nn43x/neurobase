@@ -20,58 +20,37 @@ export class SelfCorrectionLoop {
     this.llm = llm;
   }
 
+  /**
+   * One-shot correction — produces a corrected SQL but does NOT execute it.
+   * The caller is responsible for running and validating the result.
+   *
+   * Note: the previous version had a stray `return` inside a `for` loop
+   * which made `maxAttempts` dead code. By contract this method does ONE
+   * attempt — for retry-on-failure semantics, use `correctWithExecution`
+   * which actually iterates.
+   */
   async correct(
     naturalLanguageQuery: string,
     failedSQL: string,
     dbError: string,
-    schema: DatabaseSchema
+    schema: DatabaseSchema,
   ): Promise<SelfCorrectionResult> {
     return withSpan('linguistic.translate', async (span) => {
-      span.setAttribute('correction.type', 'self-correction');
-      const attempts: CorrectionAttempt[] = [];
-      const lastError = dbError;
-      const lastSQL = failedSQL;
+      span.setAttribute('correction.type', 'self-correction-oneshot');
+      const temperature = this.temperatures[0];
 
-      for (let i = 0; i < this.maxAttempts; i++) {
-        const temperature = this.temperatures[i];
-
-        logger.debug({
-          attempt: i + 1,
-          temperature,
-          error: lastError.substring(0, 100),
-        }, 'Self-correction attempt');
-
-        span.setAttribute(`correction.attempt_${i + 1}`, true);
-
-        const correctedSQL = await this.requestCorrection(
-          naturalLanguageQuery,
-          lastSQL,
-          lastError,
-          schema,
-          temperature
-        );
-
-        attempts.push({
-          attempt: i + 1,
-          sql: correctedSQL,
-          error: lastError,
-          temperature,
-        });
-
-        // Return the corrected SQL for the caller to execute and test
-        // The caller (neurobase.ts) will execute and either succeed or call again
-        return {
-          success: true,
-          finalSQL: correctedSQL,
-          attempts,
-          originalError: dbError,
-        };
-      }
+      const correctedSQL = await this.requestCorrection(
+        naturalLanguageQuery,
+        failedSQL,
+        dbError,
+        schema,
+        temperature,
+      );
 
       return {
-        success: false,
-        finalSQL: lastSQL,
-        attempts,
+        success: true,
+        finalSQL: correctedSQL,
+        attempts: [{ attempt: 1, sql: correctedSQL, error: dbError, temperature }],
         originalError: dbError,
       };
     });
