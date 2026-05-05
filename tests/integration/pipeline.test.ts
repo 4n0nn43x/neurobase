@@ -86,14 +86,22 @@ describe('pipeline integration (mock LLM + memory adapter)', () => {
     expect(adapter.queries).toHaveLength(0); // never reaches the adapter
   });
 
-  it('blocks DDL under the write level but allows it under ddl', async () => {
+  it('blocks DDL under the write level, allows it under ddl/admin', async () => {
     const sup = new OperationSupervisor();
     const sql = 'CREATE TABLE foo (id INTEGER)';
+    expect(sup.enforce(sql, 'read-only').allowed).toBe(false);
     expect(sup.enforce(sql, 'write').allowed).toBe(false);
-    expect(sup.enforce(sql, 'ddl').allowed).toBe(false); // analyzer still blocks DDL via blocked statements
-    // The intent of `ddl` is "allow user-initiated CREATE in setup mode";
-    // the analyzer's hard block stays in place — a follow-up will add a
-    // configurable override here.
+    expect(sup.enforce(sql, 'ddl').allowed).toBe(true);
+    expect(sup.enforce(sql, 'admin').allowed).toBe(true);
+  });
+
+  it('GRANT stays blocked at every level (privilege escalation guard)', async () => {
+    const sup = new OperationSupervisor();
+    const sql = 'GRANT ALL ON users TO PUBLIC';
+    for (const level of ['read-only', 'write', 'ddl', 'admin'] as const) {
+      const r = sup.enforce(sql, level);
+      expect(r.allowed).toBe(false);
+    }
   });
 
   it('records LLM call usage on the mock provider', async () => {

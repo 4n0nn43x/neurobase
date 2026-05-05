@@ -184,18 +184,28 @@ export class OperationSupervisor {
    * shape claw-code uses for permission denial events.
    */
   enforce(sql: string, level: PermissionLevel, estimatedRows?: number): EnforcementResult {
-    const classification = this.classify(sql, estimatedRows);
+    // Run the security analyzer separately so we can selectively override
+    // its "blocked" verdict for DDL when the permission level explicitly
+    // allows it. Privilege escalation (GRANT/REVOKE), system-catalog
+    // reconnaissance, and SQL injection signals are NEVER overridable.
+    const securityResult = this.securityAnalyzer.analyze(sql);
+    const blockingIssues = securityResult.issues.filter(
+      (i) => i.severity === 'critical' || i.severity === 'high',
+    );
+    const onlyDdlIssues = blockingIssues.every((i) => i.category === 'ddl');
+    const ddlAllowed = level === 'ddl' || level === 'admin';
 
-    if (classification.approvalStatus === 'blocked') {
+    if (blockingIssues.length > 0 && !(onlyDdlIssues && ddlAllowed)) {
       return {
         allowed: false,
         level,
-        riskLevel: classification.riskLevel,
-        reason: `Security analyzer blocked the statement: ${classification.reason}`,
+        riskLevel: 'destructive',
+        reason: `Security analyzer blocked the statement: ${blockingIssues.map((i) => i.message).join('; ')}`,
         requiresApproval: false,
       };
     }
 
+    const classification = this.classify(sql, estimatedRows);
     const allowedRisks = ALLOWED_RISKS_BY_LEVEL[level];
     if (!allowedRisks.has(classification.riskLevel)) {
       return {
