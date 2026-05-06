@@ -70,6 +70,8 @@ export interface SecurityConfig {
   apiRateLimit: number;
   readonlyMode: boolean;
   maxQueryTime: number;
+  /** Maximum time (ms) any single LLM call is allowed to run. Default 30000. */
+  maxLLMTime?: number;
   privacyMode?: 'strict' | 'schema-only' | 'permissive';
   /**
    * Permission ladder applied to every generated SQL before execution.

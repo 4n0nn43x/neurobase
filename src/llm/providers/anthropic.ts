@@ -3,7 +3,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { BaseLLMProvider, LLMMessage, LLMResponse, LLMOptions } from '../base';
+import { BaseLLMProvider, LLMMessage, LLMResponse, LLMOptions, DEFAULT_LLM_TIMEOUT_MS } from '../base';
 import { AnthropicConfig } from '../../types';
 
 export class AnthropicProvider extends BaseLLMProvider {
@@ -38,17 +38,34 @@ export class AnthropicProvider extends BaseLLMProvider {
     const systemMessage = messages.find((m) => m.role === 'system');
     const conversationMessages = messages.filter((m) => m.role !== 'system');
 
-    const response = await this.client.messages.create({
-      model: this.config.model,
-      max_tokens: options?.maxTokens ?? this.config.maxTokens,
-      temperature: options?.temperature ?? this.config.temperature,
-      system: systemMessage?.content,
-      messages: conversationMessages.map((msg) => ({
-        role: msg.role as 'user' | 'assistant',
-        content: msg.content,
-      })),
-      stop_sequences: options?.stopSequences,
-    });
+    const timeoutMs = options?.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    let response;
+    try {
+      response = await this.client.messages.create(
+        {
+          model: this.config.model,
+          max_tokens: options?.maxTokens ?? this.config.maxTokens,
+          temperature: options?.temperature ?? this.config.temperature,
+          system: systemMessage?.content,
+          messages: conversationMessages.map((msg) => ({
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+          })),
+          stop_sequences: options?.stopSequences,
+        },
+        { signal: controller.signal },
+      );
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        throw new Error(`Anthropic call timed out after ${timeoutMs}ms`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
 
     const textContent = response.content.find((c) => c.type === 'text');
     if (!textContent || textContent.type !== 'text') {

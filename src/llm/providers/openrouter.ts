@@ -6,7 +6,7 @@
  */
 
 import OpenAI from 'openai';
-import { BaseLLMProvider, LLMMessage, LLMResponse, LLMOptions } from '../base';
+import { BaseLLMProvider, LLMMessage, LLMResponse, LLMOptions, DEFAULT_LLM_TIMEOUT_MS } from '../base';
 import { OpenRouterConfig } from '../../types';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
@@ -39,13 +39,30 @@ export class OpenRouterProvider extends BaseLLMProvider {
     messages: LLMMessage[],
     options?: LLMOptions,
   ): Promise<LLMResponse> {
-    const response = await this.client.chat.completions.create({
-      model: this.config.model,
-      messages: messages.map((msg) => ({ role: msg.role, content: msg.content })),
-      temperature: options?.temperature ?? this.config.temperature,
-      max_tokens: options?.maxTokens ?? this.config.maxTokens,
-      stop: options?.stopSequences,
-    });
+    const timeoutMs = options?.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    let response;
+    try {
+      response = await this.client.chat.completions.create(
+        {
+          model: this.config.model,
+          messages: messages.map((msg) => ({ role: msg.role, content: msg.content })),
+          temperature: options?.temperature ?? this.config.temperature,
+          max_tokens: options?.maxTokens ?? this.config.maxTokens,
+          stop: options?.stopSequences,
+        },
+        { signal: controller.signal },
+      );
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        throw new Error(`OpenRouter call timed out after ${timeoutMs}ms`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
 
     const choice = response.choices[0];
     if (!choice || !choice.message.content) {

@@ -3,7 +3,7 @@
  */
 
 import { Ollama } from 'ollama';
-import { BaseLLMProvider, LLMMessage, LLMResponse, LLMOptions } from '../base';
+import { BaseLLMProvider, LLMMessage, LLMResponse, LLMOptions, DEFAULT_LLM_TIMEOUT_MS } from '../base';
 import { OllamaConfig } from '../../types';
 
 export class OllamaProvider extends BaseLLMProvider {
@@ -34,7 +34,11 @@ export class OllamaProvider extends BaseLLMProvider {
     messages: LLMMessage[],
     options?: LLMOptions
   ): Promise<LLMResponse> {
-    const response = await this.client.chat({
+    const timeoutMs = options?.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
+    // The ollama client doesn't accept an AbortSignal directly, so guard the
+    // call with a Promise.race against a timeout. The underlying connection
+    // will be closed by the runtime when this function returns.
+    const chatPromise = this.client.chat({
       model: this.config.model,
       messages: messages.map((msg) => ({
         role: msg.role,
@@ -46,6 +50,10 @@ export class OllamaProvider extends BaseLLMProvider {
         stop: options?.stopSequences,
       },
     });
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`Ollama call timed out after ${timeoutMs}ms`)), timeoutMs);
+    });
+    const response = await Promise.race([chatPromise, timeoutPromise]);
 
     if (!response.message?.content) {
       throw new Error('No response from Ollama');
