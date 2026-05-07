@@ -17,6 +17,7 @@ export {
   renderClarification,
   renderSchemaOverview,
   renderStats,
+  renderCostStats,
   renderHelp,
 } from './render';
 export { NeuroSpinner, renderPipeline } from './spinner';

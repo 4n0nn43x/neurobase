@@ -779,6 +779,13 @@ async function dispatchReplCommand(nb: NeuroBase, cmd: string, args: string): Pr
       await dbCommand(nb, args.trim());
       return 'handled';
 
+    case 'costs':
+    case 'cost': {
+      const { renderCostStats } = await import('./ui/render');
+      renderCostStats(true);
+      return 'handled';
+    }
+
     case 'fork':
       await createForkCommand(nb);
       return 'handled';
@@ -877,36 +884,23 @@ async function createForkCommand(nb: NeuroBase): Promise<void> {
 
     console.log();
     renderInfo('Create Database Fork');
-    console.log(colors.dim('  Create a copy of your database for safe testing.\n'));
-
-    const { strategy } = await inquirer.prompt([{
-      type: 'list', name: 'strategy', message: 'Fork strategy:',
-      choices: [
-        { name: 'Current state (template)', value: 'now' },
-        { name: 'Last snapshot', value: 'last-snapshot' },
-        { name: 'Point-in-time', value: 'to-timestamp' },
-      ],
-    }]);
-
-    if (strategy === 'to-timestamp') {
-      await inquirer.prompt([{
-        type: 'input', name: 'ts',
-        message: 'Timestamp (RFC3339):',
-        validate: (i: string) => { try { new Date(i); return true; } catch { return 'Invalid format'; } },
-      }]);
-    }
+    // All adapters currently use a single fork approach:
+    //   PostgreSQL → CREATE DATABASE … TEMPLATE
+    //   MySQL      → CREATE DATABASE + table-by-table copy
+    //   SQLite     → file copy (instant)
+    //   MongoDB    → collection-by-collection copy
+    // The legacy multi-strategy prompt promised options we don't actually
+    // execute, so it was removed. Snapshot / point-in-time strategies are
+    // tracked in the roadmap.
+    console.log(colors.dim('  Create a copy of the active database for safe testing.\n'));
 
     const { name } = await inquirer.prompt([{
       type: 'input', name: 'name', message: 'Fork name (optional):', default: '',
     }]);
 
     const spinner = new NeuroSpinner('Creating fork').start();
-    const strategyMap: Record<string, 'snapshot' | 'copy' | 'template'> = {
-      'now': 'template', 'last-snapshot': 'snapshot', 'to-timestamp': 'copy',
-    };
-
     const fork = await forkManager.createFork({
-      strategy: strategyMap[strategy] || 'template',
+      strategy: 'template',
       name: name || undefined,
     });
     spinner.succeed('Fork created');

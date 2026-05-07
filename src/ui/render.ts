@@ -262,6 +262,54 @@ export function renderStats(stats: {
     console.log(`  ${colors.muted(label.padEnd(15))} ${colors.text(value)}`);
   }
   console.log();
+
+  renderCostStats();
+}
+
+/**
+ * Render a compact view of today's LLM cost — appended to /stats and
+ * usable on its own from /costs.
+ */
+export function renderCostStats(verbose: boolean = false): void {
+  // Lazy require so the renderer stays portable for users who don't go
+  // through the singleton tracker.
+  /* eslint-disable @typescript-eslint/no-var-requires */
+  const { getCostTracker } = require('../observability/cost-tracker');
+  /* eslint-enable @typescript-eslint/no-var-requires */
+  const tracker = getCostTracker();
+  const calls = tracker.totalCalls();
+  if (calls === 0) {
+    console.log(`  ${colors.muted('LLM calls'.padEnd(15))} ${colors.dim('none yet')}`);
+    console.log();
+    return;
+  }
+
+  const tokens = tracker.tokensToday();
+  const spent = tracker.spentToday();
+  console.log(labeledSeparator('LLM cost (today)'));
+  console.log();
+  console.log(`  ${colors.muted('Calls'.padEnd(15))} ${colors.text(String(calls))}`);
+  console.log(`  ${colors.muted('Tokens in'.padEnd(15))} ${colors.text(tokens.input.toLocaleString())}`);
+  console.log(`  ${colors.muted('Tokens out'.padEnd(15))} ${colors.text(tokens.output.toLocaleString())}`);
+  console.log(`  ${colors.muted('Cost'.padEnd(15))} ${colors.accent('$' + spent.toFixed(4))}`);
+
+  const breakdown = tracker.breakdownToday();
+  if (verbose && breakdown.length > 0) {
+    console.log();
+    console.log(`  ${colors.muted('By model:')}`);
+    for (const row of breakdown.slice(0, 10)) {
+      console.log(
+        `    ${colors.text(row.model.padEnd(38))}` +
+        ` ${colors.muted(String(row.calls) + ' calls')}` +
+        ` ${colors.dim('·')} ${colors.muted(row.tokens.toLocaleString() + ' tok')}` +
+        ` ${colors.dim('·')} ${colors.accent('$' + row.costUsd.toFixed(4))}`,
+      );
+    }
+  } else if (breakdown.length > 0) {
+    const top = breakdown[0];
+    console.log(`  ${colors.muted('Top model'.padEnd(15))} ${colors.text(top.model)} ${colors.dim('($' + top.costUsd.toFixed(4) + ')')}`);
+  }
+  console.log();
 }
 
 /**
@@ -275,7 +323,8 @@ export function renderHelp(): void {
   const commands = [
     ['/help', 'Show this help screen'],
     ['/schema', 'Display database schema with relationships'],
-    ['/stats', 'Show database statistics'],
+    ['/stats', 'Show database + LLM cost statistics'],
+    ['/costs', 'Detailed LLM cost breakdown (today)'],
     ['/clear', 'Clear screen and history'],
     ['/model [id]', 'Switch the LLM model (picker if no id)'],
     ['/db [name]', 'List or switch the active database'],
