@@ -49,7 +49,9 @@ app.use(helmet({
   },
 }));
 app.use(cors());
-app.use(express.json());
+// 1 MB request-body cap — agent registration payloads are tiny, anything
+// larger is either malformed or hostile.
+app.use(express.json({ limit: '1mb' }));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -58,6 +60,28 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
 });
 app.use('/api/', limiter);
+
+/**
+ * Bearer-token authentication for every /api/* route that mutates or reads
+ * agent / orchestrator state.
+ *
+ * The token is read from NEUROBASE_MULTIAGENT_TOKEN at startup. If unset,
+ * the server refuses to listen (see `start()`) — there is no "everyone is
+ * an admin" mode by design.
+ */
+const REQUIRED_TOKEN = process.env.NEUROBASE_MULTIAGENT_TOKEN;
+app.use('/api/', (req: Request, res: Response, next: NextFunction): void => {
+  // Health check is unauthenticated so probes can keep running.
+  if (req.path === '/health') return next();
+
+  const header = req.header('authorization');
+  const presented = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
+  if (!presented || !REQUIRED_TOKEN || presented !== REQUIRED_TOKEN) {
+    res.status(401).json({ success: false, error: 'Unauthorized' });
+    return;
+  }
+  next();
+});
 
 // Initialize components
 let orchestrator: MultiAgentOrchestrator;
@@ -646,6 +670,29 @@ app.use(errorHandler);
  * Start the server
  */
 async function start() {
+  // Refuse to listen on an open socket without a token. There is no
+  // "everyone is an admin" fallback — that path was the previous reality.
+  if (!REQUIRED_TOKEN) {
+    console.error(
+      'NEUROBASE_MULTIAGENT_TOKEN is not set. Refusing to start the multi-agent\n' +
+      'API server unauthenticated. Set the env var to a strong random token\n' +
+      '(e.g. `openssl rand -hex 32`) and retry.',
+    );
+    process.exit(2);
+  }
+
+  // The orchestrator + synchronizer + task processor are all PostgreSQL-only.
+  // Crash fast with a clear message instead of erroring later with cryptic
+  // pg-syntax failures on MySQL/SQLite/MongoDB.
+  if (config.database.engine !== 'postgresql') {
+    console.error(
+      `The multi-agent API server requires PostgreSQL (configured engine: ${config.database.engine}).\n` +
+      'Switch to a Postgres database with `neurobase setup db` and retry,\n' +
+      'or use `neurobase serve` for the single-agent REST API which is engine-agnostic.',
+    );
+    process.exit(2);
+  }
+
   try {
     await initializeSystem();
 

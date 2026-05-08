@@ -1,6 +1,18 @@
 /**
- * Task Processor - Executes tasks assigned to agents
- * This worker pulls pending tasks from the queue and processes them
+ * Task Processor — pulls pending tasks from the queue and processes them.
+ *
+ * STATUS: stub.
+ *
+ * Every task handler (analyzeSchema, validateQuery, optimizeQuery,
+ * aggregateLearning, runExperiment, customTask) currently returns
+ * synthetic / hard-coded data. The processor wiring is real — it picks
+ * up tasks, updates their status, persists the result — but the
+ * "work" is a placeholder.
+ *
+ * Consumers of the multi-agent API will see results tagged with
+ * `__stub: true` so downstream tooling can detect that this is not real
+ * agent output. Real implementations are tracked under the
+ * "multi-agent execution" roadmap item.
  */
 
 import { Pool } from 'pg';
@@ -172,11 +184,10 @@ export class TaskProcessor {
           estimated_improvement: '50%'
         }
       ],
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      __stub: true,
     };
 
-    // Here you would implement real schema analysis logic
-    // For now, return mock data
     return analysis;
   }
 
@@ -199,7 +210,8 @@ export class TaskProcessor {
         'Index on WHERE columns recommended'
       ] : [],
       estimatedCost: checkPerformance ? 'medium' : undefined,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      __stub: true,
     };
 
     return validation;
@@ -224,7 +236,8 @@ export class TaskProcessor {
         { column: 'created_at', type: 'btree' }
       ] : [],
       expectedSpeedup: '3x',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      __stub: true,
     };
 
     return optimization;
@@ -250,7 +263,8 @@ export class TaskProcessor {
         cacheHitRate: '78%',
         errorRate: '0.5%'
       } : undefined,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      __stub: true,
     };
 
     return aggregation;
@@ -273,7 +287,8 @@ export class TaskProcessor {
         improvement: '25%',
         confidence: '95%'
       },
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      __stub: true,
     };
 
     return experiment;

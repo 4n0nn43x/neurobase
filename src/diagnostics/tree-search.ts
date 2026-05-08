@@ -22,6 +22,23 @@ export class DiagnosticTreeSearch {
    * Diagnose a SQL query by traversing the diagnostic tree
    */
   async diagnose(sql: string): Promise<DiagnosticResult> {
+    // The diagnostic knowledge base relies on PostgreSQL-specific introspection:
+    // pg_indexes / pg_stat_user_tables, JSON EXPLAIN output, etc. Return a
+    // clear, structured result on other engines instead of letting the queries
+    // fail one by one with cryptic syntax errors.
+    const engineName = this.adapter.getDialectName?.() ?? 'PostgreSQL';
+    if (engineName !== 'PostgreSQL') {
+      return {
+        rootCause: `Diagnostic tree-search is currently PostgreSQL-only (active engine: ${engineName})`,
+        path: [],
+        recommendations: [
+          'Run this query against a PostgreSQL database to use the diagnostic tree',
+          'Or use `EXPLAIN` directly via your engine\'s native tooling',
+        ],
+        details: { sql, engine: engineName },
+      };
+    }
+
     const tableName = this.extractPrimaryTable(sql);
     if (!tableName) {
       return {
