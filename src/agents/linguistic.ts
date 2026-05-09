@@ -42,7 +42,12 @@ export class LinguisticAgent implements Agent {
   }
 
   /**
-   * Set privacy mode (disables value exploration in strict/schema-only)
+   * Set privacy mode.
+   *
+   * Value exploration queries the database for distinct column values and
+   * injects them into the LLM prompt — that's PII / row data crossing the
+   * boundary. Only `permissive` mode allows it. In `strict` and `schema-only`
+   * the explorer is short-circuited and the prompt receives schema text only.
    */
   setPrivacyMode(mode: 'strict' | 'schema-only' | 'permissive'): void {
     this.privacyAllowsExploration = mode === 'permissive';
