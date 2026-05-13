@@ -19,9 +19,24 @@ import { SemanticLoader } from '../semantic/loader';
 import { SemanticRenderer } from '../semantic/renderer';
 import { PrivacyGuard } from '../security/privacy-guard';
 import { OperationSupervisor, type PermissionLevel } from '../orchestrator/supervisor';
+import { ResultVerifier } from '../rag/result-verifier';
+import { AuditLogger, type AuditAction } from '../security/audit-log';
+import { IntentClassifier, type IntentResult } from '../agents/intent-classifier';
+import { createHash } from 'crypto';
 import { logger } from '../utils/logger';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+
+/** Map a generated SQL statement to the audit log's coarse action category. */
+function classifyAction(sql: string): AuditAction {
+  const head = sql.trim().split(/\s+/)[0]?.toUpperCase() ?? '';
+  if (head === 'SELECT' || head === 'WITH' || head === 'EXPLAIN') return 'query';
+  if (head === 'INSERT') return 'insert';
+  if (head === 'UPDATE') return 'update';
+  if (head === 'DELETE' || head === 'TRUNCATE') return 'delete';
+  if (head === 'CREATE' || head === 'ALTER' || head === 'DROP' || head === 'RENAME') return 'schema_change';
+  return 'admin';
+}
 
 export class NeuroBase {
   private config: Config;
@@ -42,6 +57,9 @@ export class NeuroBase {
   private semanticCatalog: SemanticCatalogGenerator;
   private semanticModel: SemanticModel | null = null;
   private supervisor: OperationSupervisor;
+  private resultVerifier: ResultVerifier;
+  private auditLogger: AuditLogger;
+  private intentClassifier: IntentClassifier;
 
   constructor(config: Config) {
     this.config = config;
@@ -58,8 +76,15 @@ export class NeuroBase {
     // Initialize privacy guard
     this.privacyGuard = new PrivacyGuard(config.security.privacyMode || 'schema-only');
 
-    // Initialize agents
+    // Initialize agents.
+    //
+    // Linguistic agent receives the privacy mode so its inner ValueExplorer
+    // is gated correctly: strict / schema-only must NOT query the database
+    // for distinct values to inject into the LLM prompt. Without this call,
+    // the explorer ran regardless of the configured privacy mode — defeating
+    // the strict-mode guarantee at the prompt boundary.
     this.linguisticAgent = new LinguisticAgent(this.llm, this.db);
+    this.linguisticAgent.setPrivacyMode(config.security.privacyMode || 'schema-only');
     this.optimizerAgent = new OptimizerAgent(this.db, this.llm);
     this.memoryAgent = new MemoryAgent(this.db, this.llm);
     this.explainerAgent = new QueryExplainerAgent(this.llm, this.privacyGuard.canSendRowData());
@@ -72,6 +97,9 @@ export class NeuroBase {
       this.db, this.llm, config.security.privacyMode || 'schema-only'
     );
     this.supervisor = new OperationSupervisor();
+    this.resultVerifier = new ResultVerifier(this.db);
+    this.auditLogger = new AuditLogger(this.db);
+    this.intentClassifier = new IntentClassifier(this.llm);
 
     // Load semantic model if available
     try {
@@ -103,7 +131,17 @@ export class NeuroBase {
       throw new Error('Failed to connect to database');
     }
 
-    // Initialize memory storage tables
+    // Initialize the audit log table (engine-portable: PG / MySQL / SQLite).
+    // Failures are non-fatal — recorded in debug and audit becomes a no-op.
+    try {
+      await this.auditLogger.initialize();
+    } catch (err) {
+      logger.debug({ err }, 'Audit log init failed — continuing without audit');
+    }
+
+    // Initialize memory storage. Portable across PostgreSQL (pgvector fast
+    // path), MySQL and SQLite (TEXT-encoded embeddings, in-process cosine
+    // similarity). MongoDB is no-op'd at the MemoryAgent level with a warn.
     if (this.config.features.enableLearning) {
       await this.memoryAgent.initializeStorage();
     }
@@ -140,6 +178,23 @@ export class NeuroBase {
     });
 
     try {
+      // Step 0 — head agent: classify the intent and short-circuit when
+      // the answer doesn't require the full NL→SQL pipeline. Rule-based
+      // fast path handles greetings and obvious metadata requests at
+      // zero LLM cost; ambiguous inputs fall through to the full flow.
+      const intent: IntentResult = await this.intentClassifier.classify(nlQuery.text);
+      logger.debug({ intent: intent.type, source: intent.source, conf: intent.confidence }, 'Intent classified');
+
+      if (intent.type === 'conversational' && intent.suggestedPath.conversationalResponse) {
+        return {
+          data: [],
+          sql: '',
+          executionTime: Date.now() - startTime,
+          rowCount: 0,
+          explanation: intent.suggestedPath.conversationalResponse,
+        };
+      }
+
       // Step 1: Translate natural language to SQL
       let dbSchema = await this.schema.getSchema();
 
@@ -175,8 +230,14 @@ export class NeuroBase {
 
       let finalSQL = linguisticResult.sql;
 
-      // Step 1.5: Multi-candidate selection for complex queries (Tier 3/4)
-      if (this.config.features.enableMultiCandidate && linguisticResult.confidence < 0.8) {
+      // Step 1.5: Multi-candidate selection for complex queries (Tier 3/4).
+      // Skipped when the head agent flagged the query as simple/metadata to
+      // save LLM calls on cases that don't benefit from multiple candidates.
+      if (
+        this.config.features.enableMultiCandidate &&
+        linguisticResult.confidence < 0.8 &&
+        !intent.suggestedPath.skipMultiCandidate
+      ) {
         try {
           const selection = await this.candidateSelector.select(
             nlQuery.text, '', '', dbSchema,
@@ -197,8 +258,9 @@ export class NeuroBase {
         }
       }
 
-      // Step 2: Optimize query if enabled
-      if (this.config.features.enableOptimization) {
+      // Step 2: Optimize query if enabled. Skipped when the head agent
+      // flagged the query as trivial (metadata / simple SELECT).
+      if (this.config.features.enableOptimization && !intent.suggestedPath.skipOptimizer) {
         const optimizerResult = await this.optimizerAgent.process({
           sql: finalSQL,
           schema: dbSchema,
@@ -220,9 +282,14 @@ export class NeuroBase {
 
       // Permission enforcement — gate the SQL against the configured ladder
       // BEFORE we hand it to the driver. read-only / write / ddl / admin.
-      const permissionLevel: PermissionLevel =
-        (this.config.security.permissionLevel as PermissionLevel) ??
-        (this.config.security.readonlyMode ? 'read-only' : 'write');
+      //
+      // `readonlyMode` is the legacy kill-switch and ALWAYS wins: setting
+      // READONLY_MODE=true must lock the session to read-only even if
+      // permissionLevel was relaxed elsewhere. Falling back to 'write' when
+      // no level is configured matches the historical behaviour.
+      const permissionLevel: PermissionLevel = this.config.security.readonlyMode
+        ? 'read-only'
+        : ((this.config.security.permissionLevel as PermissionLevel) ?? 'write');
       const enforcement = this.supervisor.enforce(finalSQL, permissionLevel);
       if (!enforcement.allowed) {
         logger.warn({
@@ -236,6 +303,26 @@ export class NeuroBase {
         );
       }
 
+      // Pre-execution sanity check — catches LLM-hallucinated table/column
+      // references before they hit the driver. quickVerify is pure AST + schema
+      // lookup, no LLM cost. If it surfaces a critical issue we abort; warnings
+      // are kept for the response payload but don't block.
+      try {
+        const verify = this.resultVerifier.quickVerify(finalSQL, dbSchema);
+        if (!verify.valid && verify.issues.some((i) => i.startsWith('[critical]'))) {
+          throw new Error(
+            `Pre-execution verification failed: ${verify.issues.join('; ')}`,
+          );
+        }
+      } catch (verifyErr) {
+        // Re-throw critical verification errors only; non-critical issues
+        // should never bubble up — they're logged and execution continues.
+        if (verifyErr instanceof Error && /verification failed/i.test(verifyErr.message)) {
+          throw verifyErr;
+        }
+        logger.debug({ err: verifyErr }, 'Result verifier internal error, skipping pre-check');
+      }
+
       try {
         result = await this.db.query(finalSQL, undefined, {
           timeout: this.config.security.maxQueryTime
@@ -243,18 +330,43 @@ export class NeuroBase {
       } catch (execError) {
         // Self-correction loop
         if (this.config.features.enableSelfCorrection) {
+          // Executor used for EACH attempt inside the correction loop. We
+          // enforce the permission ladder on every retry — without this, a
+          // mid-loop LLM hallucination that produces a destructive query
+          // would execute before the final ladder check below.
+          const enforcedExecutor = async (sql: string) => {
+            const attemptEnforce = this.supervisor.enforce(sql, permissionLevel);
+            if (!attemptEnforce.allowed) {
+              throw new Error(
+                `Correction attempt denied by permission ladder: ${attemptEnforce.reason}`,
+              );
+            }
+            return this.db.query(sql, undefined, { timeout: this.config.security.maxQueryTime });
+          };
+
           const correction = await this.selfCorrectionLoop.correctWithExecution(
             nlQuery.text,
             finalSQL,
             execError instanceof Error ? execError.message : String(execError),
             dbSchema,
-            async (sql) => this.db.query(sql, undefined, { timeout: this.config.security.maxQueryTime })
+            enforcedExecutor,
           );
 
           if (correction.success) {
             finalSQL = correction.finalSQL;
             corrected = true;
             correctionAttempts = correction.attempts;
+
+            // Belt-and-suspenders: re-check the final SQL after the loop.
+            // Already validated by enforcedExecutor on the successful pass,
+            // but cheap and protects against future executor signature drift.
+            const reEnforce = this.supervisor.enforce(finalSQL, permissionLevel);
+            if (!reEnforce.allowed) {
+              throw new Error(
+                `Self-correction produced a denied operation (permission: ${reEnforce.level}). ${reEnforce.reason}`,
+              );
+            }
+
             result = await this.db.query(finalSQL, undefined, {
               timeout: this.config.security.maxQueryTime
             });
@@ -267,6 +379,21 @@ export class NeuroBase {
       }
 
       const executionTime = Date.now() - startTime;
+
+      // Step 3.5: Append to the immutable audit log. Fire-and-forget — we
+      // never block the query response on the audit write, but every
+      // successfully-executed query leaves a row behind.
+      const action = classifyAction(finalSQL);
+      this.auditLogger.log({
+        userId: nlQuery.userId,
+        action,
+        sqlHash: createHash('sha256').update(finalSQL).digest('hex'),
+        sql: finalSQL,
+        resultRows: result.rowCount || 0,
+        executionTimeMs: executionTime,
+        severity: action === 'admin' || action === 'schema_change' ? 'warning' : 'info',
+        metadata: { corrected, permissionLevel },
+      }).catch((err) => logger.debug({ err }, 'Audit write failed (non-fatal)'));
 
       // Step 4: Learn from this interaction
       if (this.config.features.enableLearning) {
@@ -284,9 +411,11 @@ export class NeuroBase {
         });
       }
 
-      // Step 5: Post-execution explanation
+      // Step 5: Post-execution explanation — skipped when the head agent
+      // judged the query trivial (e.g. schema introspection results don't
+      // benefit from a NL explanation).
       let explanation = linguisticResult.explanation;
-      if (nlQuery.context?.userPreferences?.includeExplanation) {
+      if (nlQuery.context?.userPreferences?.includeExplanation && !intent.suggestedPath.skipExplainer) {
         try {
           explanation = await this.explainerAgent.explain({
             originalQuery: nlQuery.text,
@@ -523,14 +652,22 @@ export class NeuroBase {
 
     this.schema = new SchemaIntrospector(this.db);
     this.linguisticAgent = new LinguisticAgent(this.llm, this.db);
+    this.linguisticAgent.setPrivacyMode(this.config.security.privacyMode || 'schema-only');
     this.optimizerAgent = new OptimizerAgent(this.db, this.llm);
     this.memoryAgent = new MemoryAgent(this.db, this.llm);
     this.candidateSelector = new CandidateSelector(this.llm, this.db);
     this.diagnosticSearch = new DiagnosticTreeSearch(this.db);
+    this.resultVerifier = new ResultVerifier(this.db);
+    this.auditLogger = new AuditLogger(this.db);
+    await this.auditLogger.initialize().catch((err) =>
+      logger.debug({ err }, 'Audit log init failed during switch — continuing without'),
+    );
     this.semanticCatalog = new SemanticCatalogGenerator(
       this.db, this.llm, this.config.security.privacyMode || 'schema-only',
     );
 
+    // Memory storage initialises itself across engines (PG fast path,
+    // MySQL/SQLite portable path, Mongo no-op with warn).
     if (this.config.features.enableLearning) {
       await this.memoryAgent.initializeStorage();
     }
