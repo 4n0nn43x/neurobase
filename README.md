@@ -72,55 +72,71 @@ npm run dev               # start in development mode
 
 ## Features
 
+> **Status legend** — items below are tagged `wired` (running in the default
+> query pipeline), `library` (exported from the npm package for custom
+> composition but not auto-wired) or `experimental` (present but not
+> production-grade yet). The default `neurobase` REPL only exercises the
+> `wired` items.
+
 ### Query Precision Pipeline
 
-| Stage | What it does | Inspired by |
-|-------|-------------|-------------|
-| **Value Explorer** | Verifies referenced values exist in DB before SQL generation | ReFoRCE (Snowflake) |
-| **Multi-Candidate** | Generates N SQL candidates, filters by schema validity, ranks by EXPLAIN cost | Contextual AI bird-sql |
-| **Self-Correction** | On failure, sends error + schema back to LLM for retry (3 attempts, temp 0.1→0.3→0.5) | PremSQL |
-| **Confidence Router** | 4-tier RAG routing: cache hit → few-shot → full pipeline → LLM fallback | — |
-| **Result Verifier** | 5-step verification: AST security → schema refs → sandbox execution → shape → complete | — |
+| Stage | Status | What it does | Inspired by |
+|-------|--------|-------------|-------------|
+| **Value Explorer** | wired | Verifies referenced values exist in DB before SQL generation (only when `PRIVACY_MODE=permissive`) | ReFoRCE (Snowflake) |
+| **Schema Pruner** | wired | Scores tables, packs only relevant ones into a token budget | DB-GPT |
+| **Multi-Candidate** | wired (opt-in) | Generates N SQL candidates, ranks by EXPLAIN cost — enable via `ENABLE_MULTI_CANDIDATE=true` | Contextual AI bird-sql |
+| **Self-Correction** | wired (opt-in) | On failure, sends error + schema back to LLM for retry (3 attempts, temp 0.1→0.3→0.5) | PremSQL |
+| **Result Verifier** | wired (quick mode) | Pre-execution: AST security + schema reference check. Full sandbox-execute mode is library-only. | — |
+| **Permission Ladder** | wired | `read-only` < `write` < `ddl` < `admin` gate before every execution | claw-code PermissionMode |
+| **Confidence Router** | library | 4-tier RAG routing (cache → few-shot → full → LLM fallback) | — |
+| **Feedback Loop** | library | Temporal-decay learning weight calculation | — |
+| **Vector Cache** | library | Embedding cache for similar-query reuse | — |
 
 ### Semantic Intelligence
 
-| Component | What it does | Inspired by |
-|-----------|-------------|-------------|
-| **Auto-Catalog** | LLM-generates descriptions for every table/column, persists in `neurobase_semantic_catalog` | pgai (Timescale) |
-| **Semantic Model** | YAML-defined business concepts: "revenue = SUM(orders.amount)", with relationships | Wren AI |
-| **Schema Pruner** | Scores tables by keyword overlap, FK proximity, usage frequency; respects token budget | DB-GPT |
+| Component | Status | What it does | Inspired by |
+|-----------|--------|-------------|-------------|
+| **Auto-Catalog** | wired | LLM-generates descriptions for every table/column, persists in `neurobase_semantic_catalog` (PG only) | pgai (Timescale) |
+| **Semantic Model** | wired | YAML-defined business concepts loaded from `neurobase.semantic.yml` if present | Wren AI |
 
 ### Infrastructure
 
-| Component | What it does | Inspired by |
-|-----------|-------------|-------------|
-| **MCP Server** | Tools: `query`, `schema`, `explain`, `correct`, `diagnose` — works with Claude Desktop, Cursor | DBHub |
-| **Privacy Guard** | `strict` / `schema-only` / `permissive` modes — controls what data reaches the LLM | DataLine |
-| **Explainer** | Post-execution natural language summary: "47 orders from last week, sorted by total" | Chat2DB, Wren AI |
-| **Diagnostic Tree** | Systematic root cause analysis: seq scan → missing index → suggest CREATE INDEX | D-Bot (Tsinghua) |
+| Component | Status | What it does | Inspired by |
+|-----------|--------|-------------|-------------|
+| **MCP Server** | wired | Tools: `query`, `schema`, `explain`, `correct`, `diagnose` — works with Claude Desktop, Cursor | DBHub |
+| **Privacy Guard** | wired | `strict` / `schema-only` / `permissive` modes; gates row-data sent to the LLM | DataLine |
+| **Cost Tracker** | wired | Per-provider, per-model token accounting; budget alerts; `/costs` REPL | — |
+| **Explainer** | wired (opt-in) | Post-execution natural language summary | Chat2DB, Wren AI |
+| **Diagnostic Tree** | wired (PG only) | Root cause analysis: seq scan → missing index → suggest CREATE INDEX | D-Bot (Tsinghua) |
 
-### Multi-Agent System
+### Multi-Agent System (multi-agent API only)
 
-| Agent | Purpose |
-|-------|---------|
-| **Linguistic Agent** | NL → SQL translation with conversation context |
-| **Optimizer Agent** | Execution plan analysis and query rewriting |
-| **Memory Agent** | Learning storage with temporal decay weighting |
-| **Schema Evolution** | Recommends indexes, views, partitions from query patterns |
-| **Query Validator** | Safety checks (SQL injection, dangerous patterns) |
-| **Learning Aggregator** | Cross-agent insight synthesis |
-| **A/B Testing** | Parallel strategy comparison on isolated forks |
+The `multi-agent-api` server is a separate entry point that adds the
+following on top of the core. It requires PostgreSQL and an auth token
+(`NEUROBASE_MULTIAGENT_TOKEN`). Most agent task handlers are **stubs**
+today (results tagged `__stub: true`).
+
+| Agent | Status | Purpose |
+|-------|--------|---------|
+| **Linguistic Agent** | wired | NL → SQL translation with conversation context |
+| **Optimizer Agent** | wired | Execution plan analysis and query rewriting |
+| **Memory Agent** | wired (PG only) | Learning storage with temporal decay weighting |
+| **Schema Evolution** | library | Recommends indexes, views, partitions from query patterns |
+| **Query Validator** | library | Safety checks (SQL injection, dangerous patterns) |
+| **Learning Aggregator** | experimental | Cross-agent insight synthesis — exported, not yet wired |
+| **A/B Testing** | experimental | Parallel strategy comparison on isolated forks — exported, not yet wired |
 
 ### Observability
 
-| Component | What it does |
-|-----------|-------------|
-| **OpenTelemetry** | Distributed tracing across the full query lifecycle |
-| **Alert System** | Metric-based rules with webhook and log channels |
-| **Health Monitor** | Agent health tracking with auto-healing actions |
-| **Circuit Breaker** | LLM provider failover (Anthropic → OpenAI → Ollama) |
-| **Operation Supervisor** | Risk classification (read/write/DDL) with approval gates |
-| **Audit Log** | Immutable append-only trail of all operations |
+| Component | Status | What it does |
+|-----------|--------|-------------|
+| **Cost Tracker** | wired | Token + USD accounting, daily budget alerts |
+| **OpenTelemetry** | wired (opt-in) | Distributed tracing — packages are optional peer-deps |
+| **Operation Supervisor** | wired | Risk classification + permission ladder + approval requests |
+| **Audit Log** | wired | Append-only trail of every query (portable across all 4 engines, app-level immutability) |
+| **Alert System** | library | Metric-based rules with webhook / log channels |
+| **Health Monitor** | library | Agent health tracking — not wired by default |
+| **Circuit Breaker** | library | LLM provider failover building blocks — not wired by default |
 
 ---
 
