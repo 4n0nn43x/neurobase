@@ -1,5 +1,5 @@
 /**
- * Credential store — keeps API keys out of profiles/.env
+ * Credential store — keeps API keys and service secrets out of profiles/.env
  *
  * Layout: ~/.neurobase/credentials.json (chmod 600)
  *
@@ -7,7 +7,8 @@
  *   {
  *     "anthropic": "sk-ant-...",
  *     "openai":    "sk-...",
- *     "openrouter":"sk-or-..."
+ *     "openrouter":"sk-or-...",
+ *     "multiagent_token": "<64 hex chars>"
  *   }
  *
  * Stored in plaintext today; designed so the file can later be swapped for an
@@ -15,13 +16,16 @@
  * on Linux) without changing callers. The file is created with 0600 permissions
  * on POSIX so other local users cannot read it.
  *
- * The store is intentionally minimal: getCredential / setCredential / removeCredential.
- * No encryption-at-rest yet — that needs a master password flow, tracked as future work.
+ * Two surfaces:
+ *  - Typed LLM-provider API: getCredential / setCredential / listConfiguredProviders
+ *  - Generic API: getSecret / setSecret / hasSecret for arbitrary internal keys
+ *    (multi-agent token, future webhook secrets, etc.)
  */
 
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { randomBytes } from 'crypto';
 
 export type CredentialProvider = 'anthropic' | 'openai' | 'openrouter';
 
@@ -90,4 +94,60 @@ export function maskKey(key: string): string {
   if (!key) return '';
   if (key.length <= 12) return '*'.repeat(key.length);
   return `${key.slice(0, 7)}...${key.slice(-4)}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Generic secret API — for internal app secrets (multi-agent token, etc.)
+// LLM-provider keys go through the typed surface above so call-sites stay
+// readable.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function getSecret(key: string): string | null {
+  const store = readStore();
+  return store[key] || null;
+}
+
+export function setSecret(key: string, value: string): void {
+  const store = readStore();
+  store[key] = value;
+  writeStore(store);
+}
+
+export function hasSecret(key: string): boolean {
+  return getSecret(key) !== null;
+}
+
+export function removeSecret(key: string): boolean {
+  const store = readStore();
+  if (!(key in store)) return false;
+  delete store[key];
+  writeStore(store);
+  return true;
+}
+
+/**
+ * Resolve the multi-agent bearer token with auto-generation.
+ *
+ * Resolution order:
+ *  1. process.env.NEUROBASE_MULTIAGENT_TOKEN (override path for CI / containers)
+ *  2. credentials.json `multiagent_token` (the normal path)
+ *  3. Generate a new 32-byte hex token, persist it, return it.
+ *
+ * Returns `{ token, generated }` so callers can show a one-time message
+ * the first time the token is created.
+ */
+export function ensureMultiAgentToken(): { token: string; generated: boolean } {
+  const fromEnv = process.env.NEUROBASE_MULTIAGENT_TOKEN;
+  if (fromEnv && fromEnv.length >= 32) {
+    return { token: fromEnv, generated: false };
+  }
+
+  const existing = getSecret('multiagent_token');
+  if (existing && existing.length >= 32) {
+    return { token: existing, generated: false };
+  }
+
+  const fresh = randomBytes(32).toString('hex');
+  setSecret('multiagent_token', fresh);
+  return { token: fresh, generated: true };
 }

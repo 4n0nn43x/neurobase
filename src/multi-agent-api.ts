@@ -65,11 +65,19 @@ app.use('/api/', limiter);
  * Bearer-token authentication for every /api/* route that mutates or reads
  * agent / orchestrator state.
  *
- * The token is read from NEUROBASE_MULTIAGENT_TOKEN at startup. If unset,
- * the server refuses to listen (see `start()`) — there is no "everyone is
- * an admin" mode by design.
+ * Token resolution (in order):
+ *   1. NEUROBASE_MULTIAGENT_TOKEN env var (CI / container override)
+ *   2. ~/.neurobase/credentials.json multiagent_token (normal path,
+ *      written by `neurobase setup multiagent` or auto-generated on first
+ *      `start()`)
+ *
+ * If neither exists at startup, `start()` auto-generates one, persists it,
+ * and prints it once. There is no "everyone is an admin" mode by design.
  */
-const REQUIRED_TOKEN = process.env.NEUROBASE_MULTIAGENT_TOKEN;
+/* eslint-disable @typescript-eslint/no-var-requires */
+const { ensureMultiAgentToken } = require('./config/credential-store') as typeof import('./config/credential-store');
+/* eslint-enable @typescript-eslint/no-var-requires */
+const REQUIRED_TOKEN = ensureMultiAgentToken().token;
 app.use('/api/', (req: Request, res: Response, next: NextFunction): void => {
   // Health check is unauthenticated so probes can keep running.
   if (req.path === '/health') return next();
@@ -670,15 +678,18 @@ app.use(errorHandler);
  * Start the server
  */
 async function start() {
-  // Refuse to listen on an open socket without a token. There is no
-  // "everyone is an admin" fallback — that path was the previous reality.
-  if (!REQUIRED_TOKEN) {
-    console.error(
-      'NEUROBASE_MULTIAGENT_TOKEN is not set. Refusing to start the multi-agent\n' +
-      'API server unauthenticated. Set the env var to a strong random token\n' +
-      '(e.g. `openssl rand -hex 32`) and retry.',
+  // Token resolution is now automatic: env override → credentials.json →
+  // auto-generated and persisted. `ensureMultiAgentToken()` was already
+  // called at module load to populate REQUIRED_TOKEN; this block re-checks
+  // and prints the value on first generation so the operator can copy it.
+  const tokenInfo = ensureMultiAgentToken();
+  if (tokenInfo.generated) {
+    console.log(
+      '\nGenerated a new multi-agent bearer token (saved to ~/.neurobase/credentials.json):\n' +
+      `  ${tokenInfo.token}\n\n` +
+      'Use it in API requests with:  Authorization: Bearer <token>\n' +
+      'Rotate later with: `neurobase setup multiagent --regenerate`\n',
     );
-    process.exit(2);
   }
 
   // The orchestrator + synchronizer + task processor are all PostgreSQL-only.
