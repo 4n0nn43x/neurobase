@@ -56,12 +56,12 @@ program
     await runSingleQuery(text, options);
   });
 
-const VALID_SETUP_SECTIONS = ['all', 'db', 'llm', 'model', 'token', 'features', 'privacy'] as const;
+const VALID_SETUP_SECTIONS = ['all', 'db', 'llm', 'model', 'token', 'features', 'privacy', 'multiagent'] as const;
 type SetupSectionArg = typeof VALID_SETUP_SECTIONS[number];
 
 program
   .command('setup [section]')
-  .description('Configure provider, model, database — section: db | llm | model | token | features | privacy')
+  .description('Configure provider, model, database — section: db | llm | model | token | features | privacy | multiagent')
   .option('--profile <name>', 'Profile name to create or update', 'default')
   .option('--reconfigure', 'Overwrite an existing profile without confirmation')
   .action(async (
@@ -736,12 +736,21 @@ type CommandResult = 'handled' | 'unknown' | 'exit';
 async function dispatchReplCommand(nb: NeuroBase, cmd: string, args: string): Promise<CommandResult> {
   switch (cmd) {
     case 'exit':
-    case 'quit':
+    case 'quit': {
       console.log();
       renderSuccess('Goodbye!');
       console.log();
+      // Tear down any services the user launched from this REPL session.
+      // We DON'T stop services that were running before the REPL started
+      // (those persisted across sessions via services.json) — only the
+      // children of THIS process.
+      try {
+        const { stopAllInProcess } = await import('./services/manager');
+        stopAllInProcess();
+      } catch { /* ignore */ }
       await nb.close();
       return 'exit';
+    }
 
     case 'help':
     case '?':
@@ -786,6 +795,13 @@ async function dispatchReplCommand(nb: NeuroBase, cmd: string, args: string): Pr
       return 'handled';
     }
 
+    case 'serve':
+    case 'multi-agent':
+    case 'services':
+    case 'stop':
+      await dispatchServiceCommand(cmd, args.trim());
+      return 'handled';
+
     case 'fork':
       await createForkCommand(nb);
       return 'handled';
@@ -801,6 +817,89 @@ async function dispatchReplCommand(nb: NeuroBase, cmd: string, args: string): Pr
 
     default:
       return 'unknown';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// /serve, /multi-agent, /services, /stop — manage background server
+// processes spawned from the REPL.
+// ─────────────────────────────────────────────────────────────
+
+async function dispatchServiceCommand(cmd: string, args: string): Promise<void> {
+  const { startService, stopService, listServices, formatUptime } = await import('./services/manager');
+  const { ensureMultiAgentToken } = await import('./config/credential-store');
+
+  try {
+    if (cmd === 'serve') {
+      const port = args ? parseInt(args, 10) : 3000;
+      const rec = startService('rest-api', { port });
+      renderSuccess(`REST API started on port ${rec.port}`);
+      console.log(`  ${colors.muted('PID')}   ${rec.pid}`);
+      console.log(`  ${colors.muted('Logs')}  ${rec.logFile}`);
+      console.log(`  ${colors.muted('URL')}   http://localhost:${rec.port}/health`);
+      return;
+    }
+
+    if (cmd === 'multi-agent') {
+      const port = args ? parseInt(args, 10) : 3001;
+      // ensureMultiAgentToken() auto-generates if missing — print it once.
+      const tokenInfo = ensureMultiAgentToken();
+      if (tokenInfo.generated) {
+        renderInfo('Generated a new multi-agent bearer token (saved to ~/.neurobase/credentials.json)');
+        console.log(`  ${colors.accent(tokenInfo.token)}`);
+      }
+      const rec = startService('multi-agent', { port });
+      renderSuccess(`Multi-agent API started on port ${rec.port}`);
+      console.log(`  ${colors.muted('PID')}    ${rec.pid}`);
+      console.log(`  ${colors.muted('Token')}  ${tokenInfo.token.slice(0, 12)}…  (full value in credentials.json)`);
+      console.log(`  ${colors.muted('Logs')}   ${rec.logFile}`);
+      console.log(`  ${colors.muted('URL')}    http://localhost:${rec.port}/dashboard`);
+      return;
+    }
+
+    if (cmd === 'services') {
+      const services = listServices();
+      if (services.length === 0) {
+        renderInfo('No services running. Start one with /serve or /multi-agent.');
+        return;
+      }
+      console.log();
+      for (const s of services) {
+        console.log(
+          `  ${colors.success('●')} ${colors.text(s.name.padEnd(14))}` +
+          ` ${colors.muted('pid')} ${String(s.pid).padEnd(6)}` +
+          ` ${colors.muted('port')} ${String(s.port).padEnd(6)}` +
+          ` ${colors.muted('up')} ${formatUptime(s.startedAt)}`,
+        );
+      }
+      console.log();
+      return;
+    }
+
+    if (cmd === 'stop') {
+      if (!args) {
+        renderError('Usage: /stop <rest-api|multi-agent|all>');
+        return;
+      }
+      if (args === 'all') {
+        let stopped = 0;
+        for (const name of ['rest-api', 'multi-agent'] as const) {
+          if (stopService(name)) stopped++;
+        }
+        renderSuccess(`Stopped ${stopped} service${stopped === 1 ? '' : 's'}.`);
+        return;
+      }
+      if (args !== 'rest-api' && args !== 'multi-agent') {
+        renderError(`Unknown service "${args}". Use rest-api, multi-agent, or all.`);
+        return;
+      }
+      const stopped = stopService(args);
+      if (stopped) renderSuccess(`Stopped ${args}`);
+      else renderInfo(`No running ${args} to stop.`);
+      return;
+    }
+  } catch (err) {
+    renderError(err instanceof Error ? err.message : String(err));
   }
 }
 

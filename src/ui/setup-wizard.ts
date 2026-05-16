@@ -183,7 +183,7 @@ async function testDatabase(engine: PartialDatabaseConfig['engine'], url: string
 interface CancelResult { cancelled: true }
 function cancelled(): CancelResult { return { cancelled: true }; }
 
-export type SetupSection = 'all' | 'db' | 'llm' | 'model' | 'token' | 'features' | 'privacy';
+export type SetupSection = 'all' | 'db' | 'llm' | 'model' | 'token' | 'features' | 'privacy' | 'multiagent';
 
 export async function runSetupWizard(
   opts: { profileName?: string; section?: SetupSection; reconfigure?: boolean } = {},
@@ -234,7 +234,59 @@ async function runSection(
     case 'token':    return runTokenOnly(profileName, existing!);
     case 'features': return runFeaturesOnly(profileName, existing!);
     case 'privacy':  return runPrivacyOnly(profileName, existing!);
+    case 'multiagent': return runMultiAgentOnly();
   }
+}
+
+/**
+ * Configure the multi-agent server's bearer token. Auto-generates one if
+ * none exists, prints it once for the operator to copy, and allows
+ * regeneration on demand.
+ */
+async function runMultiAgentOnly(): Promise<void> {
+  const { ensureMultiAgentToken, getSecret, setSecret } = await import('../config/credential-store');
+  const { randomBytes } = await import('crypto');
+
+  const existing = getSecret('multiagent_token');
+  if (existing) {
+    clack.log.info(`Current token: ${existing.slice(0, 12)}…  (full value in ~/.neurobase/credentials.json)`);
+    const action = await clack.select<'keep' | 'regenerate' | 'remove'>({
+      message: 'What do you want to do?',
+      options: [
+        { value: 'keep', label: 'Keep the current token' },
+        { value: 'regenerate', label: 'Regenerate (invalidates any client using the old one)' },
+        { value: 'remove', label: 'Remove the token (multi-agent server will refuse to start)' },
+      ],
+    });
+    if (clack.isCancel(action) || action === 'keep') return;
+
+    if (action === 'regenerate') {
+      const fresh = randomBytes(32).toString('hex');
+      setSecret('multiagent_token', fresh);
+      clack.outro(chalk.green('Token regenerated.') + colors.dim(`  ${fresh}`));
+      return;
+    }
+
+    if (action === 'remove') {
+      const confirm = await clack.confirm({
+        message: 'Really remove the multi-agent token?',
+        initialValue: false,
+      });
+      if (clack.isCancel(confirm) || !confirm) return;
+      const { removeSecret } = await import('../config/credential-store');
+      removeSecret('multiagent_token');
+      clack.outro(chalk.yellow('Token removed.') + colors.dim(' The multi-agent server will refuse to start until you re-run this command.'));
+      return;
+    }
+  }
+
+  // No token yet — generate one and show it.
+  const info = ensureMultiAgentToken();
+  clack.outro(
+    chalk.green('Multi-agent token generated.') +
+    colors.dim('\n  Stored in ~/.neurobase/credentials.json  ·  ') +
+    colors.accent(info.token),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
