@@ -2,7 +2,7 @@
 
 ## Overview
 
-NeuroBase is a multi-database conversational engine that translates natural language to SQL, learns from corrections, and self-heals on failures. It supports PostgreSQL, MySQL, SQLite, and MongoDB through a unified adapter interface, with multi-provider LLM support (OpenAI, Anthropic, Ollama).
+NeuroBase is a multi-database conversational engine that translates natural language to SQL, learns from corrections, and self-heals on failures. It supports PostgreSQL, MySQL, SQLite, and MongoDB through a unified adapter interface, with multi-provider LLM support (OpenAI, Anthropic, OpenRouter, Ollama).
 
 ## System Architecture
 
@@ -16,14 +16,14 @@ NeuroBase is a multi-database conversational engine that translates natural lang
 │                    NeuroBase Core                         │
 │                                                          │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │
-│  │  Confidence   │  │  Privacy     │  │  Semantic      │  │
-│  │  Router       │  │  Guard       │  │  Catalog       │  │
-│  │  (4-tier RAG) │  │  (3 modes)   │  │  (auto-gen)    │  │
+│  │  Intent       │  │  Privacy     │  │  Semantic      │  │
+│  │  Classifier   │  │  Guard       │  │  Catalog       │  │
+│  │  (head agent) │  │  (3 modes)   │  │  (auto-gen)    │  │
 │  └──────┬───────┘  └──────────────┘  └───────────────┘  │
 │         │                                                │
 │  ┌──────▼───────────────────────────────────────────┐   │
 │  │              Linguistic Agent                     │   │
-│  │  + Value Explorer (verify DB values)              │   │
+│  │  + Value Explorer (gated by PRIVACY_MODE)         │   │
 │  │  + Schema Pruner (token budget)                   │   │
 │  │  + Semantic Model (business concepts)             │   │
 │  └──────┬───────────────────────────────────────────┘   │
@@ -34,15 +34,21 @@ NeuroBase is a multi-database conversational engine that translates natural lang
 │  └──────┬───────────────────────────────────────────┘   │
 │         │                                                │
 │  ┌──────▼──────┐  ┌──────────────┐  ┌───────────────┐  │
-│  │  Result     │  │  Optimizer   │  │  Self-         │  │
-│  │  Verifier   │  │  Agent       │  │  Correction    │  │
-│  │  (5-step)   │  │              │  │  Loop (3x)     │  │
+│  │  Permission │  │  Result      │  │  Optimizer     │  │
+│  │  Ladder     │  │  Verifier    │  │  Agent         │  │
+│  │  (4 levels) │  │  (quick AST) │  │                │  │
 │  └─────────────┘  └──────────────┘  └───────────────┘  │
 │                                                          │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │
-│  │  Memory      │  │  Explainer   │  │  Diagnostic    │  │
-│  │  Agent       │  │  Agent       │  │  Tree Search   │  │
-│  │  (learning)  │  │  (post-exec) │  │  (perf debug)  │  │
+│  │  Memory      │  │  Audit Log   │  │  Self-         │  │
+│  │  Agent       │  │  (portable)  │  │  Correction    │  │
+│  │  (portable)  │  │              │  │  (re-enforced) │  │
+│  └──────────────┘  └──────────────┘  └───────────────┘  │
+│                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │
+│  │  Cost        │  │  Explainer   │  │  Diagnostic    │  │
+│  │  Tracker     │  │  Agent       │  │  Tree Search   │  │
+│  │  (per-model) │  │  (post-exec) │  │  (PG only)     │  │
 │  └──────────────┘  └──────────────┘  └───────────────┘  │
 └──────────────────────────┬──────────────────────────────┘
                            │

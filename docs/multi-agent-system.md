@@ -1,34 +1,78 @@
 # Multi-Agent System
 
-## Overview
+> **Honest status.** Two separate things travel under "multi-agent" in NeuroBase:
+>
+> 1. **Inline agents in the default query pipeline** (`neurobase serve` or
+>    the REPL) — IntentClassifier, LinguisticAgent, ValueExplorer,
+>    OptimizerAgent, MemoryAgent, ResultVerifier, ExplainerAgent, plus the
+>    Permission Ladder supervisor. These are **wired and run every query**.
+> 2. **The standalone Multi-Agent API server** (`neurobase serve:multi-agent`
+>    or `/multi-agent` from the REPL) — orchestrator + fork synchronizer +
+>    task processor. **PostgreSQL-only**. The bearer token is stored in
+>    `~/.neurobase/credentials.json` and auto-generated on first start; no
+>    env-var editing required. **Most task handlers are stubs today**
+>    (results tagged `__stub: true`). The fork-based agents listed below
+>    (Schema Evolution, Query Validator, Learning Aggregator, A/B Testing)
+>    are exported but not yet wired into the orchestrator's execution loop
+>    — they're available for users who want to compose their own flows.
 
-NeuroBase's multi-agent system enables multiple specialized AI agents to work collaboratively on separate database forks, coordinated by a central orchestrator. In v3, additional inline agents (Value Explorer, Explainer, Diagnostic Tree Search) operate within the query pipeline without requiring separate forks.
+## Launching the multi-agent server
+
+Three ways, all interchangeable:
+
+```bash
+# From a fresh shell — direct CLI
+neurobase serve:multi-agent
+
+# From inside the interactive REPL — launches as a detached child
+neurobase
+neurobase > /multi-agent          # default port 3001
+neurobase > /multi-agent 4001     # custom port
+neurobase > /services             # show pid + port + uptime
+neurobase > /stop multi-agent     # graceful shutdown
+
+# From a setup flow if you want to regenerate the token explicitly
+neurobase setup multiagent        # menu: keep / regenerate / remove
+```
+
+The first launch prints the generated bearer token once. Save it — every
+`/api/*` call below requires `Authorization: Bearer <token>`. You can
+always reread it from `~/.neurobase/credentials.json`.
 
 ## Architecture
 
 ```
-Multi-Agent Orchestrator (Main DB)
-├── Agent Registry & Lifecycle Management
-├── Task Queue & Distribution
-├── Event System & Monitoring
-├── Inter-agent Communication
-├── Health Monitor & Self-Healing
-├── Circuit Breaker (LLM failover)
-└── Operation Supervisor (risk classification)
+Inline Pipeline (default — every query)
+├── IntentClassifier        (head agent, rule-based + Haiku fallback)
+├── LinguisticAgent         (NL → SQL, dialect-aware)
+├── ValueExplorer           (gated by PRIVACY_MODE)
+├── CandidateSelector       (opt-in via ENABLE_MULTI_CANDIDATE)
+├── OptimizerAgent          (EXPLAIN-aware rewrites)
+├── PermissionLadder        (read-only/write/ddl/admin enforcement)
+├── ResultVerifier          (AST + schema refs, no LLM cost)
+├── SelfCorrectionLoop      (opt-in, re-enforces ladder per retry)
+├── MemoryAgent             (portable: PG fast path, MySQL/SQLite TEXT)
+├── AuditLogger             (portable: PG/MySQL/SQLite)
+└── ExplainerAgent          (opt-in post-exec summary)
 
-Fork-Based Agents (isolated environments)
-├── Schema Evolution Agent → index/view recommendations
-├── Query Validator Agent → safety & performance checks
-├── Learning Aggregator Agent → cross-agent insights
-└── A/B Testing Agent → parallel strategy comparison
+Multi-Agent API Server (separate entry, PG-only, token-auth)
+├── Multi-Agent Orchestrator    (agent registry + task queue)
+├── Task Processor              (handlers are STUBS — return __stub: true)
+├── Fork Synchronizer           (push/pull/bidirectional)
+└── Monitoring Dashboard        (real metrics + Math.random demo charts)
 
-Inline Agents (within query pipeline)
-├── Value Explorer Agent → verify DB values before SQL
-├── Explainer Agent → post-execution summaries
-└── Diagnostic Tree Search → perf root cause analysis
+Library-only (exported, not auto-wired)
+├── CircuitBreaker         (LLM failover building blocks)
+├── HealthMonitor          (agent health checks)
+├── AutoIndexer            (index recommendations)
+├── FeedbackLoop           (temporal decay)
+└── VectorCache            (embedding reuse)
 
-Fork Synchronizer
-└── Knowledge sharing across agents
+Experimental (exported, no execution path yet)
+├── Schema Evolution Agent
+├── Query Validator Agent
+├── Learning Aggregator Agent
+└── A/B Testing Agent
 ```
 
 ---

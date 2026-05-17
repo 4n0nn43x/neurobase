@@ -8,7 +8,21 @@ http://localhost:3000
 
 ## Authentification
 
-Pas d'authentification requise actuellement. Pour la production, implementez un middleware d'authentification.
+Les endpoints sont repartis sur deux serveurs :
+
+- **Core API** (`neurobase serve`, mono-agent) — `/api/query`, `/api/schema`,
+  `/api/diagnose`, `/health`. **Pas d'authentification requise** par defaut.
+  Cable ton propre middleware si tu exposes publiquement.
+
+- **Multi-Agent API** (`neurobase serve:multi-agent` ou `/multi-agent`
+  depuis le REPL) — `/api/agents/*`, `/api/dashboard/*`, `/api/tasks/*`.
+  **Bearer-token requis**. Le token est stocke dans
+  `~/.neurobase/credentials.json` et **auto-genere au premier demarrage**
+  — pas besoin de toucher au `.env`. Chaque requete doit inclure
+  `Authorization: Bearer <token>`. `/health` est la seule route non authentifiee.
+
+Pour rotation ou suppression : `neurobase setup multiagent`. Override
+via env var (CI / containers) : `NEUROBASE_MULTIAGENT_TOKEN`.
 
 ---
 

@@ -8,7 +8,21 @@ http://localhost:3000
 
 ## Authentication
 
-Currently no authentication required. For production use, implement authentication middleware.
+The endpoints are split across two servers:
+
+- **Core API** (`neurobase serve`, single-agent) — `/api/query`, `/api/schema`,
+  `/api/diagnose`, `/health`. **No authentication required** by default.
+  Wire your own middleware if exposing publicly.
+
+- **Multi-Agent API** (`neurobase serve:multi-agent` or `/multi-agent`
+  from the REPL) — `/api/agents/*`, `/api/dashboard/*`, `/api/tasks/*`.
+  **Bearer-token authentication is REQUIRED**. The token is stored in
+  `~/.neurobase/credentials.json` and **auto-generated on first start** —
+  no env-var editing required. Every request must include
+  `Authorization: Bearer <token>`. `/health` is the only unauthenticated route.
+
+To rotate or remove the token: `neurobase setup multiagent`. To override
+via env var (CI / containers): set `NEUROBASE_MULTIAGENT_TOKEN`.
 
 ---
 
@@ -192,12 +206,19 @@ Get recent learning entries.
 
 ## Multi-Agent API Endpoints
 
+> **Authentication required.** Every endpoint below expects a bearer token
+> matching `NEUROBASE_MULTIAGENT_TOKEN`. The server also refuses to start
+> on non-PostgreSQL engines and the task handlers are currently stubs
+> (results tagged `__stub: true`). See
+> [Multi-Agent System](./multi-agent-system.md) for the full status.
+
 ### Agent Management
 
 #### Register Agent
 
 ```http
 POST /api/agents/register
+Authorization: Bearer <token>
 ```
 
 **Request Body:**

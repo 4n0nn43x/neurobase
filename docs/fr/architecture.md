@@ -2,7 +2,7 @@
 
 ## Vue d'ensemble
 
-NeuroBase est un moteur conversationnel multi-bases de donnees qui traduit le langage naturel en SQL, apprend des corrections, et s'auto-corrige en cas d'echec. Il supporte PostgreSQL, MySQL, SQLite et MongoDB via une interface d'adaptateur unifiee, avec support multi-fournisseurs LLM (OpenAI, Anthropic, Ollama).
+NeuroBase est un moteur conversationnel multi-bases de donnees qui traduit le langage naturel en SQL, apprend des corrections, et s'auto-corrige en cas d'echec. Il supporte PostgreSQL, MySQL, SQLite et MongoDB via une interface d'adaptateur unifiee, avec support multi-fournisseurs LLM (OpenAI, Anthropic, OpenRouter, Ollama).
 
 ## Architecture systeme
 

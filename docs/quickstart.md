@@ -102,10 +102,15 @@ neurobase > quels clients n'ont pas commandé depuis 30 jours ?
 |---------|--------|
 | `/help` | Show all commands |
 | `/schema` | Display database schema with relationships |
-| `/stats` | Show database statistics |
+| `/stats` | Show database + LLM cost statistics |
+| `/costs` | Detailed LLM cost breakdown for today (tokens, USD, top models) |
 | `/clear` | Clear screen and history |
 | `/model [id]` | Switch LLM model (searchable picker if no id) |
 | `/db [name]` | List or switch the active database |
+| `/serve [port]` | Launch the REST API server as a background child process |
+| `/multi-agent [port]` | Launch the multi-agent API server (auto-generates a bearer token) |
+| `/services` | List running background services |
+| `/stop <name>` | Stop a service (`rest-api`, `multi-agent`, or `all`) |
 | `/fork` | Create a database fork for testing |
 | `/forks` | List active forks |
 | `/fork-delete <id>` | Delete a fork |

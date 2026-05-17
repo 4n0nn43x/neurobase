@@ -69,7 +69,7 @@ DATABASE_URL=postgresql://user:password@localhost:5432/mydb
 # LLM Provider (choose one)
 LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-sonnet-4-20250514
+ANTHROPIC_MODEL=claude-sonnet-4-5
 
 # Or OpenAI
 # LLM_PROVIDER=openai

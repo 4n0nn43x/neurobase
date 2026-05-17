@@ -102,10 +102,15 @@ neurobase > orders from last week
 |----------|--------|
 | `/help` | Afficher toutes les commandes |
 | `/schema` | Afficher le schema avec les relations |
-| `/stats` | Afficher les statistiques |
+| `/stats` | Afficher les statistiques DB + coût LLM |
+| `/costs` | Détail des coûts LLM du jour (tokens, USD, top modèles) |
 | `/clear` | Effacer l'ecran et l'historique |
 | `/model [id]` | Changer le modele LLM (picker recherchable sans id) |
 | `/db [nom]` | Lister ou changer la base active |
+| `/serve [port]` | Lancer le serveur REST API en arrière-plan |
+| `/multi-agent [port]` | Lancer le serveur multi-agent (token bearer auto-généré) |
+| `/services` | Lister les services en arrière-plan |
+| `/stop <nom>` | Stopper un service (`rest-api`, `multi-agent`, ou `all`) |
 | `/fork` | Creer un fork de la base (bac a sable) |
 | `/forks` | Lister les forks actifs |
 | `/fork-delete <id>` | Supprimer un fork |

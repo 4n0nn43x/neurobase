@@ -82,6 +82,7 @@ npm run dev               # start in development mode
 
 | Stage | Status | What it does | Inspired by |
 |-------|--------|-------------|-------------|
+| **Intent Classifier** | wired | Head agent: rule-based fast path (greetings, metadata, simple vs complex) + Haiku-class LLM fallback. Short-circuits trivial queries to save LLM cost | Anthropic lead-worker pattern |
 | **Value Explorer** | wired | Verifies referenced values exist in DB before SQL generation (only when `PRIVACY_MODE=permissive`) | ReFoRCE (Snowflake) |
 | **Schema Pruner** | wired | Scores tables, packs only relevant ones into a token budget | DB-GPT |
 | **Multi-Candidate** | wired (opt-in) | Generates N SQL candidates, ranks by EXPLAIN cost — enable via `ENABLE_MULTI_CANDIDATE=true` | Contextual AI bird-sql |
@@ -233,10 +234,15 @@ The CLI features a rich terminal interface with:
 |---|---|
 | `/help` | List all commands |
 | `/schema` | Display schema with relationships |
-| `/stats` | Database statistics |
+| `/stats` | Database statistics + today's LLM cost summary |
+| `/costs` | Detailed cost breakdown (tokens, USD, top models) |
 | `/clear` | Clear screen and conversation history |
 | `/model [id]` | Switch LLM model (searchable picker if no id) |
 | `/db [name]` | List databases, or switch active by name |
+| `/serve [port]` | Start the REST API server in background |
+| `/multi-agent [port]` | Start the multi-agent API server (auto-generates the bearer token) |
+| `/services` | List running background services with PID/port/uptime |
+| `/stop <name>` | Stop a service (`rest-api`, `multi-agent`, or `all`) |
 | `/fork` | Create a sandbox fork of the active DB |
 | `/forks` | List active forks |
 | `/fork-delete <id>` | Delete a fork |
