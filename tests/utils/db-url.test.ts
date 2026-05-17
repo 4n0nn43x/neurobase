@@ -81,10 +81,10 @@ describe('normalizeDbUrl', () => {
     });
 
     it('encodes mongodb+srv:// Atlas connection strings', () => {
-      const raw = 'mongodb+srv://user:p@ss@cluster.x1.mongodb.net/db?retryWrites=true';
+      const raw = 'mongodb+srv://user:p@ss@cluster.example.invalid/db?retryWrites=true';
       const { normalized, changed } = normalizeDbUrl('mongodb', raw);
       expect(changed).toBe(true);
-      expect(normalized).toBe('mongodb+srv://user:p%40ss@cluster.x1.mongodb.net/db?retryWrites=true');
+      expect(normalized).toBe('mongodb+srv://user:p%40ss@cluster.example.invalid/db?retryWrites=true');
     });
 
     it('handles multi-host mongodb URLs', () => {
@@ -161,7 +161,7 @@ describe('validateDbUrlShape', () => {
     });
 
     it('accepts mongodb+srv://', () => {
-      expect(validateDbUrlShape('mongodb', 'mongodb+srv://cluster.x.mongodb.net/d')).toBeNull();
+      expect(validateDbUrlShape('mongodb', 'mongodb+srv://cluster.test.mongodb.net/d')).toBeNull();
     });
 
     it('rejects scheme mismatch', () => {
@@ -241,9 +241,9 @@ describe('formatDbError — DNS layer', () => {
 
   it('detects MongoDB Atlas SRV failure', () => {
     const err = makeErr({
-      message: 'querySrv ENOTFOUND _mongodb._tcp.cluster.xxx.mongodb.net',
+      message: 'querySrv ENOTFOUND _mongodb._tcp.cluster.test.mongodb.net',
       code: 'ENOTFOUND',
-      hostname: 'cluster.xxx.mongodb.net',
+      hostname: 'cluster.test.mongodb.net',
     });
     const msg = formatDbError('mongodb', err);
     expect(msg).toMatch(/Atlas/i);
