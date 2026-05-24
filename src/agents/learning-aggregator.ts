@@ -75,7 +75,7 @@ export class LearningAggregatorAgent {
       try {
         await this.aggregateAndSynthesize();
       } catch (error) {
-        logger.error({ error }, 'Error during learning aggregation');
+        logger.error({ err: error }, 'Error during learning aggregation');
       }
     }, intervalMs);
   }

@@ -104,7 +104,7 @@ export class TaskProcessor {
         await this.processTask(task);
       }
     } catch (error) {
-      logger.error({ error }, 'Error processing tasks');
+      logger.error({ err: error }, 'Error processing tasks');
     }
   }
 

@@ -109,7 +109,7 @@ program
 program.parse();
 
 // Conversation context
-const conversationHistory: Array<{ query: string; sql?: string; timestamp: Date }> = [];
+const conversationHistory: Array<{ query: string; sql?: string; agentResponse?: string; timestamp: Date }> = [];
 
 // History persistence
 const HISTORY_FILE = path.join(process.cwd(), '.neurobase', 'history.txt');
@@ -261,14 +261,17 @@ async function runInteractiveMode(): Promise<void> {
 async function executeQuery(
   nb: NeuroBase,
   query: string,
-  history: Array<{ query: string; sql?: string; timestamp: Date }>
+  history: Array<{ query: string; sql?: string; agentResponse?: string; timestamp: Date }>
 ): Promise<void> {
   const spinner = new NeuroSpinner('Analyzing query').start();
 
   try {
-    const recentContext = history.slice(-3).map(entry =>
-      `User: "${entry.query}"\nSQL: ${entry.sql || 'N/A'}`
-    ).join('\n\n');
+    const recentContext = history.slice(-5).map(entry => {
+      if (entry.agentResponse) {
+        return `User: "${entry.query}"\nAgent: "${entry.agentResponse}"`;
+      }
+      return `User: "${entry.query}"\nSQL: ${entry.sql || 'N/A'}`;
+    }).join('\n\n');
 
     const linguisticResult = await (nb as any).linguisticAgent.process({
       query: {
@@ -286,7 +289,7 @@ async function executeQuery(
     if (linguisticResult.isConversational && linguisticResult.conversationalResponse) {
       spinner.clear();
       renderConversation(linguisticResult.conversationalResponse);
-      history.push({ query, sql: undefined, timestamp: new Date() });
+      history.push({ query, agentResponse: linguisticResult.conversationalResponse, timestamp: new Date() });
       if (history.length > 10) history.shift();
       return;
     }
@@ -350,7 +353,7 @@ async function handleClarification(
   nb: NeuroBase,
   originalQuery: string,
   linguisticResult: any,
-  history: Array<{ query: string; sql?: string; timestamp: Date }>
+  history: Array<{ query: string; sql?: string; agentResponse?: string; timestamp: Date }>
 ): Promise<void> {
   renderClarification(
     linguisticResult.clarificationQuestion,
@@ -438,7 +441,7 @@ async function handleMissingData(
   nb: NeuroBase,
   query: string,
   linguisticResult: any,
-  history: Array<{ query: string; sql?: string; timestamp: Date }>
+  history: Array<{ query: string; sql?: string; agentResponse?: string; timestamp: Date }>
 ): Promise<void> {
   const missing = linguisticResult.missingData;
   console.log();
@@ -832,6 +835,10 @@ async function dispatchServiceCommand(cmd: string, args: string): Promise<void> 
   try {
     if (cmd === 'serve') {
       const port = args ? parseInt(args, 10) : 3000;
+      if (args && (isNaN(port) || port < 1 || port > 65535)) {
+        renderError(`Invalid port "${args}". Use a number between 1 and 65535.`);
+        return;
+      }
       const rec = startService('rest-api', { port });
       renderSuccess(`REST API started on port ${rec.port}`);
       console.log(`  ${colors.muted('PID')}   ${rec.pid}`);
@@ -842,13 +849,20 @@ async function dispatchServiceCommand(cmd: string, args: string): Promise<void> 
 
     if (cmd === 'multi-agent') {
       const port = args ? parseInt(args, 10) : 3001;
+      if (args && (isNaN(port) || port < 1 || port > 65535)) {
+        renderError(`Invalid port "${args}". Use a number between 1 and 65535.`);
+        return;
+      }
+      // Start the service first — if it throws (already running, build missing,
+      // etc.) we don't want to print or generate a token that will mislead the
+      // operator about a server that never started.
+      const rec = startService('multi-agent', { port });
       // ensureMultiAgentToken() auto-generates if missing — print it once.
       const tokenInfo = ensureMultiAgentToken();
       if (tokenInfo.generated) {
         renderInfo('Generated a new multi-agent bearer token (saved to ~/.neurobase/credentials.json)');
         console.log(`  ${colors.accent(tokenInfo.token)}`);
       }
-      const rec = startService('multi-agent', { port });
       renderSuccess(`Multi-agent API started on port ${rec.port}`);
       console.log(`  ${colors.muted('PID')}    ${rec.pid}`);
       console.log(`  ${colors.muted('Token')}  ${tokenInfo.token.slice(0, 12)}…  (full value in credentials.json)`);

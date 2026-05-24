@@ -112,7 +112,7 @@ export class MultiAgentOrchestrator extends EventEmitter {
       this.isInitialized = true;
       logger.info('Multi-Agent Orchestrator initialized successfully');
     } catch (error) {
-      logger.error({ error }, 'Failed to initialize orchestrator');
+      logger.error({ err: error }, 'Failed to initialize orchestrator');
       throw error;
     }
   }

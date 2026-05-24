@@ -54,39 +54,46 @@ export class SchemaIntrospector {
     const tables: TableSchema[] = [];
 
     for (const info of tableInfos) {
-      const [columns, primaryKeys, foreignKeys, indexes, rowCount] =
-        await Promise.all([
-          this.adapter.getColumns(info.schema, info.name),
-          this.adapter.getPrimaryKeys(info.schema, info.name),
-          this.adapter.getForeignKeys(info.schema, info.name),
-          this.adapter.getIndexes(info.schema, info.name),
-          this.adapter.getRowCount(info.schema, info.name),
-        ]);
+      try {
+        const [columns, primaryKeys, foreignKeys, indexes, rowCount] =
+          await Promise.all([
+            this.adapter.getColumns(info.schema, info.name),
+            this.adapter.getPrimaryKeys(info.schema, info.name),
+            this.adapter.getForeignKeys(info.schema, info.name),
+            this.adapter.getIndexes(info.schema, info.name),
+            this.adapter.getRowCount(info.schema, info.name),
+          ]);
 
-      tables.push({
-        name: info.name,
-        schema: info.schema,
-        columns: columns.map(c => ({
-          name: c.name,
-          type: c.type,
-          nullable: c.nullable,
-          default: c.default,
-          description: c.description,
-        })),
-        primaryKeys,
-        foreignKeys: foreignKeys.map(fk => ({
-          column: fk.column,
-          referencedTable: fk.referencedTable,
-          referencedColumn: fk.referencedColumn,
-        })),
-        indexes: indexes.map(idx => ({
-          name: idx.name,
-          columns: idx.columns,
-          unique: idx.unique,
-          type: idx.type,
-        })),
-        rowCount,
-      });
+        tables.push({
+          name: info.name,
+          schema: info.schema,
+          columns: columns.map(c => ({
+            name: c.name,
+            type: c.type,
+            nullable: c.nullable,
+            default: c.default,
+            description: c.description,
+          })),
+          primaryKeys,
+          foreignKeys: foreignKeys.map(fk => ({
+            column: fk.column,
+            referencedTable: fk.referencedTable,
+            referencedColumn: fk.referencedColumn,
+          })),
+          indexes: indexes.map(idx => ({
+            name: idx.name,
+            columns: idx.columns,
+            unique: idx.unique,
+            type: idx.type,
+          })),
+          rowCount,
+        });
+      } catch (err) {
+        // Some databases (e.g. Supabase) expose internal shadow tables in
+        // information_schema that can't be fully introspected. Skip them so
+        // one inaccessible table doesn't abort the entire schema load.
+        logger.debug({ err, table: `${info.schema}.${info.name}` }, 'Skipping table — introspection failed');
+      }
     }
 
     return tables;

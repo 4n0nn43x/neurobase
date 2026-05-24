@@ -560,25 +560,38 @@ async function runTokenOnly(profileName: string, existing: NonNullable<ReturnTyp
         ? verifyOpenAIKey
         : verifyOpenRouterKey;
 
-  const apiKey = await clack.password({
-    message: `New ${provider} API key`,
-    mask: '*',
-    validate: (val) => (val ? undefined : 'API key is required'),
-  });
-  if (clack.isCancel(apiKey)) { clack.cancel('Cancelled.'); return; }
+  let finalKey: string | undefined;
+  while (!finalKey) {
+    const input = await clack.password({
+      message: `New ${provider} API key`,
+      mask: '*',
+      validate: (val) => (val ? undefined : 'API key is required'),
+    });
+    if (clack.isCancel(input)) { clack.cancel('Cancelled.'); return; }
 
-  const spin = clack.spinner();
-  spin.start('Validating key');
-  const verdict = await validator(apiKey as string);
-  if (verdict.ok) {
-    spin.stop(`Key verified — ${verdict.detail}`);
-  } else {
-    spin.stop(colors.dim(`Validation failed: ${verdict.detail}`));
-    const cont = await clack.confirm({ message: 'Save anyway?', initialValue: false });
-    if (clack.isCancel(cont) || !cont) return;
+    const spin = clack.spinner();
+    spin.start('Validating key');
+    const verdict = await validator(input as string);
+    if (verdict.ok) {
+      spin.stop(`Key verified — ${verdict.detail}`);
+      finalKey = input as string;
+    } else {
+      spin.stop(colors.dim(`Validation failed: ${verdict.detail}`));
+      const action = await clack.select<'retry' | 'continue' | 'cancel'>({
+        message: 'What do you want to do?',
+        options: [
+          { value: 'retry',    label: 'Enter a different key' },
+          { value: 'continue', label: 'Save anyway (use this key as-is)' },
+          { value: 'cancel',   label: 'Cancel' },
+        ],
+      });
+      if (clack.isCancel(action) || action === 'cancel') return;
+      if (action === 'continue') finalKey = input as string;
+      // action === 'retry' → loop
+    }
   }
 
-  setCredential(provider as 'anthropic' | 'openai' | 'openrouter', apiKey as string);
+  setCredential(provider as 'anthropic' | 'openai' | 'openrouter', finalKey);
   clack.outro(chalk.green('Token updated.') + colors.dim(` Profile: ${profileName}`));
 }
 
@@ -780,83 +793,104 @@ async function collectKeyedProvider(opts: {
   validate: (key: string) => Promise<{ ok: boolean; detail: string }>;
   models: ModelOption[];
 }): Promise<LLMResult | CancelResult> {
-  const apiKey = await clack.password({
-    message: opts.label,
-    mask: '*',
-    validate: (val) => (val ? undefined : 'API key is required'),
-  });
-  if (clack.isCancel(apiKey)) return cancelled();
-
-  const spin = clack.spinner();
-  spin.start('Validating key');
-  const verdict = await opts.validate(apiKey as string);
-  if (verdict.ok) {
-    spin.stop(`Key verified — ${verdict.detail}`);
-  } else {
-    spin.stop(colors.dim(`Validation failed: ${verdict.detail}`));
-    const cont = await clack.confirm({
-      message: 'Continue anyway and save this key?',
-      initialValue: false,
+  let apiKey: string | undefined;
+  while (!apiKey) {
+    const input = await clack.password({
+      message: opts.label,
+      mask: '*',
+      validate: (val) => (val ? undefined : 'API key is required'),
     });
-    if (clack.isCancel(cont) || !cont) return cancelled();
+    if (clack.isCancel(input)) return cancelled();
+
+    const spin = clack.spinner();
+    spin.start('Validating key');
+    const verdict = await opts.validate(input as string);
+    if (verdict.ok) {
+      spin.stop(`Key verified — ${verdict.detail}`);
+      apiKey = input as string;
+    } else {
+      spin.stop(colors.dim(`Validation failed: ${verdict.detail}`));
+      const action = await clack.select<'retry' | 'continue' | 'cancel'>({
+        message: 'What do you want to do?',
+        options: [
+          { value: 'retry',    label: 'Enter a different key' },
+          { value: 'continue', label: 'Continue anyway and save this key' },
+          { value: 'cancel',   label: 'Cancel' },
+        ],
+      });
+      if (clack.isCancel(action) || action === 'cancel') return cancelled();
+      if (action === 'continue') apiKey = input as string;
+      // action === 'retry' → loop
+    }
   }
 
   const model = await pickModel({ models: opts.models });
   if (!model) return cancelled();
 
-  return { apiKey: apiKey as string, model };
+  return { apiKey, model };
 }
 
 async function collectOpenRouter(): Promise<LLMResult | CancelResult> {
-  const apiKey = await clack.password({
-    message: 'OpenRouter API key',
-    mask: '*',
-    validate: (val) => (val ? undefined : 'API key is required'),
-  });
-  if (clack.isCancel(apiKey)) return cancelled();
-
-  const spin = clack.spinner();
-  spin.start('Validating key and fetching models');
-
-  const verdict = await verifyOpenRouterKey(apiKey as string);
-  if (!verdict.ok) {
-    spin.stop(colors.dim(`Validation failed: ${verdict.detail}`));
-    const cont = await clack.confirm({
-      message: 'Continue anyway and save this key?',
-      initialValue: false,
-    });
-    if (clack.isCancel(cont) || !cont) return cancelled();
-  }
-
-  let modelOptions: ModelOption[] = [
+  const FALLBACK_MODELS: ModelOption[] = [
     { value: 'anthropic/claude-sonnet-4-5', label: 'anthropic/claude-sonnet-4-5', hint: 'recommended' },
     { value: 'openai/gpt-4o', label: 'openai/gpt-4o' },
     { value: 'google/gemini-2.0-flash-001', label: 'google/gemini-2.0-flash-001' },
     { value: 'meta-llama/llama-3.3-70b-instruct', label: 'meta-llama/llama-3.3-70b-instruct' },
   ];
 
-  try {
-    const fetched = await OpenRouterProvider.listModels(apiKey as string);
-    if (fetched.length > 0) {
-      // Pass the full catalogue (not just top 30) — the searchable picker
-      // makes large lists usable.
-      modelOptions = fetched.map((m) => ({
-        value: m.id,
-        label: m.name || m.id,
-        hint: m.context_length ? `${Math.round(m.context_length / 1000)}k ctx` : undefined,
-      }));
-      spin.stop(`${fetched.length} models available — type to filter`);
+  let apiKey: string | undefined;
+  let modelOptions: ModelOption[] = FALLBACK_MODELS;
+
+  while (!apiKey) {
+    const input = await clack.password({
+      message: 'OpenRouter API key',
+      mask: '*',
+      validate: (val) => (val ? undefined : 'API key is required'),
+    });
+    if (clack.isCancel(input)) return cancelled();
+
+    const spin = clack.spinner();
+    spin.start('Validating key and fetching models');
+
+    const verdict = await verifyOpenRouterKey(input as string);
+    if (verdict.ok) {
+      // Fetch the full model catalogue while we have a valid key.
+      try {
+        const fetched = await OpenRouterProvider.listModels(input as string);
+        if (fetched.length > 0) {
+          modelOptions = fetched.map((m) => ({
+            value: m.id,
+            label: m.name || m.id,
+            hint: m.context_length ? `${Math.round(m.context_length / 1000)}k ctx` : undefined,
+          }));
+          spin.stop(`${fetched.length} models available — type to filter`);
+        } else {
+          spin.stop('Using fallback model list');
+        }
+      } catch {
+        spin.stop('Using fallback model list');
+      }
+      apiKey = input as string;
     } else {
-      spin.stop('Using fallback model list');
+      spin.stop(colors.dim(`Validation failed: ${verdict.detail}`));
+      const action = await clack.select<'retry' | 'continue' | 'cancel'>({
+        message: 'What do you want to do?',
+        options: [
+          { value: 'retry',    label: 'Enter a different key' },
+          { value: 'continue', label: 'Continue anyway and save this key' },
+          { value: 'cancel',   label: 'Cancel' },
+        ],
+      });
+      if (clack.isCancel(action) || action === 'cancel') return cancelled();
+      if (action === 'continue') apiKey = input as string;
+      // action === 'retry' → loop
     }
-  } catch {
-    spin.stop('Using fallback model list');
   }
 
   const model = await pickModel({ models: modelOptions });
   if (!model) return cancelled();
 
-  return { apiKey: apiKey as string, model };
+  return { apiKey, model };
 }
 
 async function collectOllama(): Promise<LLMResult | CancelResult> {

@@ -44,9 +44,16 @@ function getLogDir(): string {
 }
 
 function getDistDir(): string {
-  // `dist/` relative to the package install dir. We resolve it from the
-  // location of this compiled module: dist/services/manager.js → dist/.
-  return path.dirname(path.dirname(__filename));
+  // Under node (post-build) __filename is `.../dist/services/manager.js`
+  //   → path.dirname twice gives `.../dist/` ✓
+  // Under tsx (dev mode) __filename is `.../src/services/manager.ts`
+  //   → path.dirname twice gives `.../src/` ✗ — we go one more level up to
+  //     the project root and then into dist/.
+  const twoUp = path.dirname(path.dirname(__filename));
+  if (__filename.endsWith('.ts')) {
+    return path.join(path.dirname(twoUp), 'dist');
+  }
+  return twoUp;
 }
 
 function readRegistry(): ServiceRecord[] {
@@ -99,7 +106,14 @@ export interface StartOptions {
  * resulting record. Throws if the service is already running.
  */
 export function startService(name: ServiceName, opts: StartOptions = {}): ServiceRecord {
-  const existing = findService(name);
+  // Read and prune the registry once. Reusing this snapshot for both the
+  // duplicate check and the write reduces the TOCTOU window compared to
+  // calling findService() then readRegistry() again mid-function.
+  const currentRecords = readRegistry();
+  const aliveRecords = currentRecords.filter((r) => isAlive(r.pid));
+  if (aliveRecords.length !== currentRecords.length) writeRegistry(aliveRecords);
+
+  const existing = aliveRecords.find((r) => r.name === name) ?? null;
   if (existing) {
     throw new Error(`Service "${name}" is already running on port ${existing.port} (pid ${existing.pid})`);
   }
@@ -111,8 +125,7 @@ export function startService(name: ServiceName, opts: StartOptions = {}): Servic
 
   if (!fs.existsSync(entry)) {
     throw new Error(
-      `Compiled entry not found at ${entry}. Run \`npm run build\` first ` +
-      `(or use \`npm run dev\` to skip the manager).`,
+      `Compiled entry not found at ${entry}. Run \`npm run build\` first.`,
     );
   }
 
@@ -127,12 +140,19 @@ export function startService(name: ServiceName, opts: StartOptions = {}): Servic
     detached: true,
     stdio: ['ignore', out, err],
   });
-  child.unref();
-  inProcessChildren.set(name, child);
+  // Close the parent's copies of the fds immediately — the child holds its own.
+  // Leaving them open would leak one fd pair per startService call.
+  fs.closeSync(out);
+  fs.closeSync(err);
 
+  // Check pid before registering — an undefined pid means spawn failed.
+  // Registering first and checking later would leave a zombie in the map.
   if (typeof child.pid !== 'number') {
     throw new Error(`Failed to spawn "${name}" — no PID returned`);
   }
+
+  child.unref();
+  inProcessChildren.set(name, child);
 
   const record: ServiceRecord = {
     name,
@@ -142,9 +162,9 @@ export function startService(name: ServiceName, opts: StartOptions = {}): Servic
     logFile,
   };
 
-  const records = readRegistry().filter((r) => r.name !== name);
-  records.push(record);
-  writeRegistry(records);
+  const updatedRecords = aliveRecords.filter((r) => r.name !== name);
+  updatedRecords.push(record);
+  writeRegistry(updatedRecords);
   return record;
 }
 
@@ -165,18 +185,21 @@ export function stopService(name: ServiceName): boolean {
     return false;
   }
 
+  let killed = false;
   try {
     process.kill(record.pid, 'SIGTERM');
-  } catch { /* already dead */ }
+    killed = true;
+  } catch { /* already dead or EPERM — clean from registry regardless */ }
   inProcessChildren.delete(name);
   const records = readRegistry().filter((r) => r.pid !== record.pid);
   writeRegistry(records);
-  return true;
+  return killed;
 }
 
 /** Stop every service this REPL session spawned. Called on REPL exit. */
 export function stopAllInProcess(): void {
-  for (const [name, child] of inProcessChildren) {
+  // Iterate a snapshot so deletions inside the loop don't affect the iterator.
+  for (const [name, child] of Array.from(inProcessChildren)) {
     if (!child.killed) {
       try { child.kill('SIGTERM'); } catch { /* ignore */ }
     }

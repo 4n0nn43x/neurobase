@@ -189,7 +189,7 @@ export class AlertSystem {
               logger.error({ status: response.status }, 'Failed to send webhook alert');
             }
           } catch (error) {
-            logger.error({ error }, 'Failed to send webhook alert');
+            logger.error({ err: error }, 'Failed to send webhook alert');
           }
         }
         break;

@@ -41,7 +41,13 @@ export class SemanticCatalogGenerator {
    */
   async initialize(schema: DatabaseSchema): Promise<void> {
     try {
-      // Try to load existing catalog from DB
+      // Ensure the catalog table exists before we try to read from it.
+      // Doing CREATE TABLE IF NOT EXISTS first means loadFromDB() and
+      // getStoredHash() never hit a "relation does not exist" error that
+      // would be logged as ERROR by the adapter before our catch can fire.
+      await this.ensureTable();
+
+      // Load existing catalog from DB
       await this.loadFromDB();
 
       // Check if schema has changed
@@ -193,17 +199,21 @@ Return JSON:
     }
   }
 
+  private async ensureTable(): Promise<void> {
+    await this.adapter.execute(`
+      CREATE TABLE IF NOT EXISTS neurobase_semantic_catalog (
+        table_name TEXT PRIMARY KEY,
+        table_description TEXT,
+        column_descriptions JSONB,
+        schema_hash TEXT,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+  }
+
   private async saveToDB(schemaHash: string): Promise<void> {
     try {
-      await this.adapter.execute(`
-        CREATE TABLE IF NOT EXISTS neurobase_semantic_catalog (
-          table_name TEXT PRIMARY KEY,
-          table_description TEXT,
-          column_descriptions JSONB,
-          schema_hash TEXT,
-          updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-      `);
+      await this.ensureTable();
 
       for (const [tableName, entry] of this.catalog) {
         await this.adapter.execute(`

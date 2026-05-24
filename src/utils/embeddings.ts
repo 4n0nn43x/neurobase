@@ -44,7 +44,7 @@ export class EmbeddingService {
       this.initialized = true;
       logger.debug('Local embedding model initialized successfully');
     } catch (error) {
-      logger.error({ error }, 'Failed to initialize embedding model');
+      logger.error({ err: error }, 'Failed to initialize embedding model');
       throw new Error(`Embedding initialization failed: ${error}`);
     }
   }

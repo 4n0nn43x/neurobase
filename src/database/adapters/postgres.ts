@@ -159,7 +159,7 @@ export class PostgresAdapter implements DatabaseAdapter {
       logger.debug({ time: result.rows[0].current_time }, 'Database connection successful');
       return true;
     } catch (error) {
-      logger.error({ error }, 'Database connection failed');
+      logger.error({ err: error }, 'Database connection failed');
       return false;
     }
   }
@@ -199,11 +199,20 @@ export class PostgresAdapter implements DatabaseAdapter {
   }
 
   async getPrimaryKeys(schema: string, tableName: string): Promise<string[]> {
+    // Use a subquery-based OID lookup instead of ::regclass so that tables
+    // that exist in information_schema but can't be resolved (e.g. Supabase
+    // internal shadow tables like _conversationparticipants) return an empty
+    // list rather than throwing "relation does not exist".
     const result = await this.query<{ column_name: string }>(
       `SELECT a.attname as column_name
        FROM pg_index i
        JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-       WHERE i.indrelid = ($1 || '.' || $2)::regclass
+       WHERE i.indrelid = (
+         SELECT c.oid
+         FROM pg_class c
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = $1 AND c.relname = $2
+       )
          AND i.indisprimary`,
       [schema, tableName]
     );
@@ -320,8 +329,15 @@ export class PostgresAdapter implements DatabaseAdapter {
 
   async getRowCount(schema: string, tableName: string): Promise<number> {
     try {
+      // Safe OID lookup via pg_class/pg_namespace — same pattern as getPrimaryKeys.
+      // Avoids the ::regclass cast that throws for shadow/internal tables (e.g.
+      // Supabase _conversationparticipants) and logs a spurious ERROR before the
+      // caller's catch can intercept it.
       const result = await this.query<{ count: string }>(
-        `SELECT reltuples::bigint AS count FROM pg_class WHERE oid = ($1 || '.' || $2)::regclass`,
+        `SELECT reltuples::bigint AS count
+         FROM pg_class c
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = $1 AND c.relname = $2`,
         [schema, tableName]
       );
       return parseInt(result.rows[0]?.count || '0');

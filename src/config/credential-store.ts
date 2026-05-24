@@ -62,7 +62,7 @@ function writeStore(data: Record<string, string>): void {
 
 export function getCredential(provider: CredentialProvider): string | null {
   const store = readStore();
-  return store[provider] || null;
+  return (provider in store) ? store[provider] : null;
 }
 
 export function setCredential(provider: CredentialProvider, key: string): void {
@@ -104,7 +104,7 @@ export function maskKey(key: string): string {
 
 export function getSecret(key: string): string | null {
   const store = readStore();
-  return store[key] || null;
+  return (key in store) ? store[key] : null;
 }
 
 export function setSecret(key: string, value: string): void {
@@ -138,7 +138,15 @@ export function removeSecret(key: string): boolean {
  */
 export function ensureMultiAgentToken(): { token: string; generated: boolean } {
   const fromEnv = process.env.NEUROBASE_MULTIAGENT_TOKEN;
-  if (fromEnv && fromEnv.length >= 32) {
+  if (fromEnv) {
+    // Honor the operator's explicit value regardless of length, but warn so
+    // they know the token will be used as-is (short tokens are weak).
+    if (fromEnv.length < 32) {
+      process.stderr.write(
+        `[neurobase] WARNING: NEUROBASE_MULTIAGENT_TOKEN is set but only ${fromEnv.length} characters long ` +
+        `(minimum recommended: 32). Using it as-is — consider a stronger value.\n`,
+      );
+    }
     return { token: fromEnv, generated: false };
   }
 

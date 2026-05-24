@@ -95,7 +95,7 @@ export class MemoryAgent implements Agent {
       );
       return true;
     } catch (error) {
-      logger.error({ error }, 'Failed to store correction');
+      logger.error({ err: error }, 'Failed to store correction');
       return false;
     }
   }
@@ -122,14 +122,14 @@ export class MemoryAgent implements Agent {
                 ${this.engine === 'postgresql' ? 'embedding::text AS embedding' : 'embedding'},
                 context
          FROM neurobase_learning_history
-         WHERE (${p(1)} IS NULL OR user_id = ${p(2)})
+         WHERE (${this.engine === 'postgresql' ? `${p(1)}::text` : p(1)} IS NULL OR user_id = ${p(2)})
          ORDER BY timestamp DESC
          LIMIT ${p(3)}`,
         [userId || null, userId || null, limit],
       );
       return result.rows.map((row) => this.rowToEntry(row));
     } catch (error) {
-      logger.error({ error }, 'Failed to get history');
+      logger.error({ err: error }, 'Failed to get history');
       return [];
     }
   }
@@ -203,7 +203,7 @@ export class MemoryAgent implements Agent {
       this.embeddingCache.set(entry.naturalLanguage, entry.embedding);
       return { success: true };
     } catch (error) {
-      logger.error({ error }, 'Failed to store learning entry');
+      logger.error({ err: error }, 'Failed to store learning entry');
       return { success: false };
     }
   }
@@ -217,7 +217,7 @@ export class MemoryAgent implements Agent {
       }
       return await this.retrieveSimilarInProcess(queryEmbedding);
     } catch (error) {
-      logger.error({ error }, 'Failed to retrieve similar queries');
+      logger.error({ err: error }, 'Failed to retrieve similar queries');
       return { success: false };
     }
   }
@@ -304,7 +304,7 @@ export class MemoryAgent implements Agent {
       );
       return { success: true };
     } catch (error) {
-      logger.error({ error }, 'Failed to update learning entry');
+      logger.error({ err: error }, 'Failed to update learning entry');
       return { success: false };
     }
   }

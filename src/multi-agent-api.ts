@@ -18,7 +18,9 @@ import { MonitoringDashboard } from './dashboard/monitor';
 import { TaskProcessor } from './workers/task-processor';
 
 const app = express();
-const port = config.neurobase.port || 3000;
+// Use nullish coalescing so an explicit NEUROBASE_PORT=0 is honoured rather
+// than silently overridden by the || 3000 falsy check.
+const port = config.neurobase.port ?? 3000;
 
 // Security middleware
 app.use(helmet({
@@ -71,20 +73,19 @@ app.use('/api/', limiter);
  *      written by `neurobase setup multiagent` or auto-generated on first
  *      `start()`)
  *
- * If neither exists at startup, `start()` auto-generates one, persists it,
- * and prints it once. There is no "everyone is an admin" mode by design.
+ * The token is read on every request so that a credential rotation via
+ * `neurobase setup multiagent --regenerate` takes effect without a restart.
  */
-/* eslint-disable @typescript-eslint/no-var-requires */
-const { ensureMultiAgentToken } = require('./config/credential-store') as typeof import('./config/credential-store');
-/* eslint-enable @typescript-eslint/no-var-requires */
-const REQUIRED_TOKEN = ensureMultiAgentToken().token;
+import { ensureMultiAgentToken, getSecret } from './config/credential-store';
 app.use('/api/', (req: Request, res: Response, next: NextFunction): void => {
   // Health check is unauthenticated so probes can keep running.
   if (req.path === '/health') return next();
 
+  // Read the active token on each request — supports runtime rotation.
+  const activeToken = process.env.NEUROBASE_MULTIAGENT_TOKEN || getSecret('multiagent_token');
   const header = req.header('authorization');
   const presented = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
-  if (!presented || !REQUIRED_TOKEN || presented !== REQUIRED_TOKEN) {
+  if (!presented || !activeToken || presented !== activeToken) {
     res.status(401).json({ success: false, error: 'Unauthorized' });
     return;
   }
@@ -678,10 +679,9 @@ app.use(errorHandler);
  * Start the server
  */
 async function start() {
-  // Token resolution is now automatic: env override → credentials.json →
-  // auto-generated and persisted. `ensureMultiAgentToken()` was already
-  // called at module load to populate REQUIRED_TOKEN; this block re-checks
-  // and prints the value on first generation so the operator can copy it.
+  // Token is resolved here (single call) — auto-generates and persists if
+  // missing. The middleware reads the token on each request from the store
+  // so this call also primes credentials.json before the first request arrives.
   const tokenInfo = ensureMultiAgentToken();
   if (tokenInfo.generated) {
     console.log(
@@ -719,7 +719,7 @@ async function start() {
       console.log(`✅ Server running on port ${port}\n`);
     });
   } catch (error) {
-    logger.error({ error }, 'Failed to start server');
+    logger.error({ err: error }, 'Failed to start server');
     process.exit(1);
   }
 }
@@ -733,10 +733,14 @@ process.on('SIGINT', async () => {
     taskProcessor.stop();
   }
 
-  // Shutdown orchestrator (which also closes mainPool)
-  await orchestrator.shutdown();
-  await synchronizer.shutdown();
-  // Note: mainPool is already closed by orchestrator.shutdown()
+  // Guard against the signal arriving before initializeSystem() completes —
+  // orchestrator and synchronizer are undefined until that point.
+  if (orchestrator) {
+    await orchestrator.shutdown();
+  }
+  if (synchronizer) {
+    await synchronizer.shutdown();
+  }
 
   process.exit(0);
 });

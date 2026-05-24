@@ -114,7 +114,7 @@ export class MonitoringDashboard {
         const metrics = await this.getMetrics();
         res.json(metrics);
       } catch (error: any) {
-        logger.error({ error }, 'Error fetching dashboard metrics');
+        logger.error({ err: error }, 'Error fetching dashboard metrics');
         res.status(500).json({ error: error.message });
       }
     });
@@ -790,7 +790,7 @@ export class MonitoringDashboard {
       try {
         await this.getMetrics();
       } catch (error) {
-        logger.error({ error }, 'Error collecting metrics');
+        logger.error({ err: error }, 'Error collecting metrics');
       }
     }, intervalMs);
   }

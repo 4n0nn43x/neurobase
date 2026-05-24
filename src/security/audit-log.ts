@@ -137,7 +137,7 @@ export class AuditLogger {
         ],
       );
     } catch (error) {
-      logger.error({ error }, 'Failed to write audit log entry');
+      logger.error({ err: error }, 'Failed to write audit log entry');
     }
   }
 

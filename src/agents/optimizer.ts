@@ -81,7 +81,7 @@ export class OptimizerAgent implements Agent {
         applied,
       };
     } catch (error) {
-      logger.error({ error }, 'Query optimization failed');
+      logger.error({ err: error }, 'Query optimization failed');
       // Return original SQL on error
       return {
         optimizedSQL: sql,
@@ -122,7 +122,7 @@ export class OptimizerAgent implements Agent {
         actualTime: plan['Execution Time'] || 0,
       };
     } catch (error) {
-      logger.error({ error }, 'Failed to get execution plan');
+      logger.error({ err: error }, 'Failed to get execution plan');
       throw error;
     }
   }

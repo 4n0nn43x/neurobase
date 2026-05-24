@@ -276,7 +276,7 @@ export class QueryValidatorAgent {
         executionTime,
       };
     } catch (error: any) {
-      logger.error({ error }, 'Query execution test failed');
+      logger.error({ err: error }, 'Query execution test failed');
 
       return {
         success: false,

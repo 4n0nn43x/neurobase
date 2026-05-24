@@ -568,7 +568,7 @@ export class NeuroBase {
       try {
         handler(event);
       } catch (error) {
-        logger.error({ error }, 'Event handler error');
+        logger.error({ err: error }, 'Event handler error');
       }
     }
   }

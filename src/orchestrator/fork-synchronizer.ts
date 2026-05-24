@@ -495,7 +495,7 @@ export class ForkSynchronizer {
           }
         }
       } catch (error) {
-        logger.error({ error }, 'Error in auto sync');
+        logger.error({ err: error }, 'Error in auto sync');
       }
     }, intervalMs);
   }

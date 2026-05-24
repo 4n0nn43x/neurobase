@@ -20,12 +20,12 @@ export interface LLMOptions {
   temperature?: number;
   maxTokens?: number;
   stopSequences?: string[];
-  /** Per-call timeout in milliseconds. Defaults to the provider's own default (30s). */
+  /** Per-call timeout in milliseconds. Defaults to 60s. */
   timeoutMs?: number;
 }
 
 /** Default LLM call timeout — protects the query pipeline from a hung API. */
-export const DEFAULT_LLM_TIMEOUT_MS = 30_000;
+export const DEFAULT_LLM_TIMEOUT_MS = 60_000;
 
 export abstract class BaseLLMProvider {
   abstract generateCompletion(

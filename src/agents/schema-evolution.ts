@@ -65,7 +65,7 @@ export class SchemaEvolutionAgent {
       try {
         await this.analyzeAndRecommend();
       } catch (error) {
-        logger.error({ error }, 'Error during schema analysis');
+        logger.error({ err: error }, 'Error during schema analysis');
       }
     }, intervalMs);
   }
@@ -356,7 +356,7 @@ Return your response as a JSON array of recommendations.`;
       // Fallback: generate basic index recommendations
       return this.generateBasicRecommendations(patterns);
     } catch (error) {
-      logger.error({ error }, 'Error generating LLM recommendations');
+      logger.error({ err: error }, 'Error generating LLM recommendations');
       return this.generateBasicRecommendations(patterns);
     }
   }

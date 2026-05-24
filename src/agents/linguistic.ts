@@ -80,6 +80,12 @@ export class LinguisticAgent implements Agent {
     }, 'Processing natural language query');
 
     try {
+      // Fast path: common metadata queries handled locally — no LLM call needed.
+      const shortcut = this.tryMetadataShortcut(query.text);
+      if (shortcut) {
+        return { sql: shortcut, confidence: 1.0, explanation: 'Metadata query' };
+      }
+
       // Get schema as text (pruned for large schemas)
       const schemaText = this.schemaPruner.prune(schema, query.text);
 
@@ -133,7 +139,7 @@ export class LinguisticAgent implements Agent {
         suggestedInterpretations: result.suggestedInterpretations,
       };
     } catch (error) {
-      logger.error({ error }, 'Failed to generate SQL');
+      logger.error({ err: error }, 'Failed to generate SQL');
       throw new Error(`Failed to generate SQL: ${error}`);
     }
   }
@@ -237,12 +243,19 @@ Valid PostgreSQL, performance-optimized, handle NULLs, use DISTINCT and ORDER BY
       temperature !== undefined ? { temperature } : undefined
     );
 
+    // Strip markdown code fences (```json ... ``` or ``` ... ```) before parsing.
+    const stripped = response.content
+      .replace(/```(?:json)?\s*/gi, '')
+      .replace(/```/g, '')
+      .trim();
+
+    // Attempt 1: parse the first JSON object in the (stripped) response.
     try {
-      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+      const jsonMatch = stripped.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const result = JSON.parse(jsonMatch[0]);
         return {
-          sql: result.sql || '',
+          sql: this.sanitizeSQL(result.sql || ''),
           confidence: result.confidence || 0.7,
           explanation: result.explanation || '',
           alternatives: result.alternatives,
@@ -253,12 +266,28 @@ Valid PostgreSQL, performance-optimized, handle NULLs, use DISTINCT and ORDER BY
           suggestedInterpretations: result.suggestedInterpretations,
         };
       }
-    } catch (e) {
-      // Fallback: try to extract SQL
-      const sqlMatch = response.content.match(/SELECT[\s\S]*?;/i);
-      if (sqlMatch) {
+    } catch {
+      // Fall through to SQL extraction
+    }
+
+    // Attempt 2: extract a bare SQL statement using patterns that require real SQL structure.
+    // Avoids matching English/French text that starts with "with", "select all", etc.
+    const SQL_PATTERNS = [
+      /SELECT\b[\s\S]+?\bFROM\b[\s\S]+/i,              // SELECT ... FROM
+      /INSERT\s+INTO\s+\w[\s\S]+/i,                     // INSERT INTO
+      /UPDATE\s+\w+\s+SET\b[\s\S]+/i,                   // UPDATE t SET
+      /DELETE\s+FROM\s+\w[\s\S]*/i,                     // DELETE FROM
+      /WITH\s+\w+\s+AS\s*\([\s\S]+/i,                  // WITH cte AS (
+      /CREATE\s+(?:TABLE|INDEX|VIEW|SCHEMA)\b[\s\S]+/i, // CREATE TABLE/INDEX/VIEW
+      /DROP\s+(?:TABLE|INDEX|VIEW|SCHEMA)\b[\s\S]+/i,   // DROP TABLE
+      /ALTER\s+TABLE\b[\s\S]+/i,                        // ALTER TABLE
+      /EXPLAIN\b[\s\S]+/i,                              // EXPLAIN
+    ];
+    for (const pattern of SQL_PATTERNS) {
+      const m = stripped.match(pattern);
+      if (m) {
         return {
-          sql: sqlMatch[0],
+          sql: this.sanitizeSQL(m[0].trim()),
           confidence: 0.5,
           explanation: 'Extracted from response',
           isConversational: false,
@@ -266,7 +295,33 @@ Valid PostgreSQL, performance-optimized, handle NULLs, use DISTINCT and ORDER BY
       }
     }
 
+    logger.debug({ raw: response.content.substring(0, 300) }, 'Could not parse LLM response');
     throw new Error('Could not parse SQL from LLM response');
+  }
+
+  /**
+   * Fast local shortcuts for common metadata queries — skips the LLM entirely.
+   * Returns the SQL string if matched, null otherwise.
+   */
+  private tryMetadataShortcut(text: string): string | null {
+    const t = text.trim();
+    // "show tables", "list tables", "quelles tables", "quel sont les tables",
+    // "what tables", "liste les tables", "les tables", etc.
+    // Also catches common typos: "stable" contains "table".
+    if (/\b(table|tabl[e]?s?|stable)\b/i.test(t) &&
+        /\b(show|list|quell|montr|affich|voir|what|quel|quoi|liste?r?)\b/i.test(t) &&
+        !/\b(create|alter|drop|add|insert|delete|column|colonne)\b/i.test(t)) {
+      return "SELECT tablename AS table_name FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename";
+    }
+    return null;
+  }
+
+  /** Replace curly/smart quotes with straight ASCII equivalents in LLM-generated SQL */
+  private sanitizeSQL(sql: string): string {
+    return sql
+      .replace(/[‘’‚‛′‵]/g, "'")
+      .replace(/[“”„‟″‶]/g, '"')
+      .replace(/[—–]/g, '--');
   }
 
   /**
@@ -368,9 +423,9 @@ Valid PostgreSQL, performance-optimized, handle NULLs, use DISTINCT and ORDER BY
     // Basic validation
     const upperSQL = sql.toUpperCase().trim();
 
-    // Must start with SELECT, INSERT, UPDATE, DELETE, or WITH
-    if (!/^(SELECT|INSERT|UPDATE|DELETE|WITH)\s/.test(upperSQL)) {
-      errors.push('SQL must start with SELECT, INSERT, UPDATE, DELETE, or WITH');
+    // Must start with a recognised SQL statement keyword
+    if (!/^(SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|DROP|ALTER|EXPLAIN)\s/.test(upperSQL)) {
+      errors.push('SQL must start with SELECT, INSERT, UPDATE, DELETE, WITH, CREATE, DROP, ALTER, or EXPLAIN');
     }
 
     // Check for balanced parentheses
